@@ -1,10 +1,12 @@
 # Author: Tristan Challener <challenert@gmail.com>
+# Author: Christoph Merscher <dev@fmerscher.com>
 # Copyright: please don't steal this that is all
 
 import argparse
 import sys
 
 from digimon.settings import SettingsError, SettingsJsonError, loadSettings
+from digimon.settings_schema import validateSettings
 
 
 def main( argv=None ):
@@ -21,6 +23,7 @@ def main( argv=None ):
 
     try:
         config = loadSettings( settings )
+        validateSettings( config )
         from digimon.randomizer import runRandomizer
         runRandomizer( config )
     except SettingsJsonError as err:
