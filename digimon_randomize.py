@@ -2,40 +2,54 @@
 # Author: Christoph Merscher <dev@fmerscher.com>
 # Copyright: please don't steal this that is all
 
+"""CLI entry point for the Digimon World randomizer.
+
+Parses the ``-settings`` argument, hands the parsed JSON to
+:func:`digimon.app.run`, and translates user-facing exceptions into a
+process exit code. All real work happens behind :func:`digimon.app.run`.
+"""
+
+from __future__ import annotations
+
 import argparse
 import sys
 
-from digimon.settings import SettingsError, SettingsJsonError, loadSettings
-from digimon.settings_schema import validateSettings
+from digimon.app import run as run_randomizer
+from digimon.settings import (
+    SettingsError,
+    SettingsJsonError,
+    loadSettings,
+    validateSettings,
+)
 
 
-def main( argv=None ):
-    """
-    CLI entry point for randomizing a ROM from a JSON settings string.
-    """
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point — returns the desired process exit code."""
 
-    if( argv is None ):
+    if argv is None:
         argv = sys.argv[1:]
 
-    args = argparse.ArgumentParser( description='Randomize Digimon World' )
-    args.add_argument( '-settings', required=True, help='JSON settings string that configures the operation' )
-    settings = args.parse_args( argv ).settings
+    parser = argparse.ArgumentParser(description="Randomize Digimon World")
+    parser.add_argument(
+        "-settings", required=True,
+        help="JSON settings string that configures the operation",
+    )
+    settings_json = parser.parse_args(argv).settings
 
     try:
-        config = loadSettings( settings )
-        validateSettings( config )
-        from digimon.randomizer import runRandomizer
-        runRandomizer( config )
+        config = loadSettings(settings_json)
+        validateSettings(config)
+        run_randomizer(config)
     except SettingsJsonError as err:
-        print( "Failed to parse JSON" )
-        print( err.error )
+        print("Failed to parse JSON")
+        print(err.error)
         return 1
     except SettingsError as err:
-        print( err )
+        print(err)
         return 1
 
     return 0
 
 
-if( __name__ == '__main__' ):
-    raise SystemExit( main() )
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,392 @@
+"""Read every supported data block out of a Digimon World ROM image.
+
+The reader is the only place that turns raw PSX bytes into the typed
+in-memory ``RomState`` used elsewhere. Each ``_read_*`` helper handles
+one section of the ROM so the top-level :meth:`RomReader.read` reads
+top-to-bottom as a high-level checklist.
+"""
+
+from __future__ import annotations
+
+import struct
+from typing import BinaryIO
+
+import digimon.data as data
+from digimon.models import Digimon, Item, ModelContext, Tech
+from digimon.rom import blocks, script_offsets
+from digimon.rom.file import RomFile
+from digimon.rom.state import RomState
+from digimon.rom.struct_codec import (
+    read_block_with_exclusions,
+    unpack_array,
+)
+import script.util as scrutil
+
+
+class RomReader:
+    """Populate a fresh :class:`RomState` from a ROM file image."""
+
+    def __init__(self, lookup: ModelContext, logger) -> None:
+        self._lookup = lookup
+        self._logger = logger
+
+    # ------------------------------------------------------------------
+    def read(self, rom: RomFile) -> RomState:
+        state = RomState()
+        handle = rom.handle
+
+        self._read_techs(handle, state)
+        self._read_tech_tier_list(handle, state)
+        self._read_tech_battle_learn(handle, state)
+        self._read_tech_brain_learn(handle, state)
+        self._read_items(handle, state)
+        self._read_digimon(handle, state)
+        self._read_evolutions(handle, state)
+        self._read_evolution_stats(handle, state)
+        self._read_evolution_requirements(handle, state)
+        self._read_starters(handle, state)
+        self._read_recruitments(handle, state)
+        self._read_special_evolutions(handle, state)
+        self._read_chest_items(handle, state)
+        self._read_map_items(handle, state)
+        self._read_tokomon_items(handle, state)
+        self._read_tech_gifts(handle, state)
+        self._read_jukebox_track_names(handle, state)
+
+        return state
+
+    # ------------------------------------------------------------------
+    # Tech data
+    # ------------------------------------------------------------------
+    def _read_techs(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Tech Data"))
+
+        raw = read_block_with_exclusions(
+            handle,
+            blocks.techDataBlockOffset, blocks.techDataBlockSize,
+            blocks.techDataExclusionOffsets, blocks.techDataExclusionSize,
+        )
+        records = unpack_array(raw, blocks.techDataFormat, blocks.techDataBlockCount)
+
+        for i, record in enumerate(records):
+            tech = Tech(self._lookup, i, record)
+            tech.setName(data.techs[i])
+            state.techData.append(tech)
+
+    def _read_tech_tier_list(self, handle: BinaryIO, state: RomState) -> None:
+        raw = read_block_with_exclusions(
+            handle,
+            blocks.techTierListBlockOffset, blocks.techTierListBlockSize,
+            blocks.techTierListExclusionOffsets, blocks.techTierListExclusionSize,
+        )
+        records = unpack_array(raw, blocks.techTierListFormat, blocks.techTierListBlockCount)
+
+        # Each tier-list row is (id_at_slot_1, id_at_slot_2, …); the slot
+        # index plus one is the tier value assigned to that tech.
+        for record in records:
+            for slot_index, tech_id in enumerate(record):
+                state.techData[tech_id].tier = slot_index + 1
+
+    def _read_tech_battle_learn(self, handle: BinaryIO, state: RomState) -> None:
+        raw = read_block_with_exclusions(
+            handle,
+            blocks.techLearnBlockOffset, blocks.techLearnBlockSize,
+            blocks.techLearnExclusionOffsets, blocks.techLearnExclusionSize,
+        )
+        records = unpack_array(raw, blocks.techLearnFormat, blocks.techLearnBlockCount)
+
+        for tech_id, record in enumerate(records):
+            state.techData[tech_id].learnChance = list(record)
+
+        for tech in state.techData:
+            self._logger.log(str(tech))
+
+    def _read_tech_brain_learn(self, handle: BinaryIO, state: RomState) -> None:
+        raw = read_block_with_exclusions(
+            handle,
+            blocks.techBrainBlockOffset, blocks.techBrainBlockSize,
+            blocks.techBrainExclusionOffsets, blocks.techBrainExclusionSize,
+        )
+        records = unpack_array(raw, blocks.techLearnFormat, blocks.techBrainBlockCount)
+
+        # Index = tier, value = per-specialty learn chance tuple.
+        state.brainLearn = [list(record) for record in records]
+
+        self._logger.log("Brain training learn chances:")
+        for tier_index, learn_rate in enumerate(state.brainLearn):
+            self._logger.log("Tier " + str(tier_index + 1) + ": " + str(learn_rate))
+
+    # ------------------------------------------------------------------
+    # Items
+    # ------------------------------------------------------------------
+    def _read_items(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Item Data"))
+
+        raw = read_block_with_exclusions(
+            handle,
+            blocks.itemDataBlockOffset, blocks.itemDataBlockSize,
+            blocks.itemDataExclusionOffsets, blocks.itemDataExclusionSize,
+        )
+        records = unpack_array(raw, blocks.itemDataFormat, blocks.itemDataBlockCount)
+
+        for i, record in enumerate(records):
+            item = Item(self._lookup, i, record)
+            state.itemData.append(item)
+            self._logger.log(str(item))
+
+        # Override prices for the three high-tier evo items (matches legacy).
+        state.itemData[125].price = 9999
+        state.itemData[126].price = 5000
+        state.itemData[127].price = 9999
+
+    # ------------------------------------------------------------------
+    # Digimon
+    # ------------------------------------------------------------------
+    def _read_digimon(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Digimon Data"))
+
+        raw = read_block_with_exclusions(
+            handle,
+            blocks.digimonDataBlockOffset, blocks.digimonDataBlockSize,
+            blocks.digimonDataExclusionOffsets, blocks.digimonDataExclusionSize,
+        )
+        records = unpack_array(raw, blocks.digimonDataFormat, blocks.digimonDataBlockCount)
+
+        for i, record in enumerate(records):
+            digi = Digimon(self._lookup, i, record)
+            state.digimonData.append(digi)
+            self._logger.log(str(digi) + "\n")
+
+    # ------------------------------------------------------------------
+    # Evolution tables
+    # ------------------------------------------------------------------
+    def _read_evolutions(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Evolution Data"))
+
+        raw = read_block_with_exclusions(
+            handle,
+            blocks.evoToFromBlockOffset, blocks.evoToFromBlockSize,
+            blocks.evoToFromExclusionOffsets, blocks.evoToFromExclusionSize,
+        )
+        records = unpack_array(raw, blocks.evoToFromFormat, blocks.evoToFromBlockCount)
+
+        # Player (ID 0) has no evo entries, so this block starts at id 1.
+        for i, record in enumerate(records):
+            state.digimonData[1 + i].setEvoData(record)
+            self._logger.log(state.digimonData[1 + i].evoData() + "\n")
+
+    def _read_evolution_stats(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Evolution Stat Gain Data"))
+
+        raw = read_block_with_exclusions(
+            handle,
+            blocks.evoStatsBlockOffset, blocks.evoStatsBlockSize,
+            blocks.evoStatsExclusionOffsets, blocks.evoStatsExclusionSize,
+        )
+        records = unpack_array(raw, blocks.evoStatsFormat, blocks.evoStatsBlockCount)
+
+        for i, record in enumerate(records):
+            state.digimonData[i].setEvoStats(record)
+            self._logger.log(state.digimonData[i].evoStatsToString() + "\n")
+
+    def _read_evolution_requirements(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Evolution Requirements Data"))
+
+        raw = read_block_with_exclusions(
+            handle,
+            blocks.evoReqsBlockOffset, blocks.evoReqsBlockSize,
+            blocks.evoReqsExclusionOffsets, blocks.evoReqsExclusionSize,
+        )
+        records = unpack_array(raw, blocks.evoReqsFormat, blocks.evoReqsBlockCount)
+
+        for i, record in enumerate(records):
+            state.digimonData[i].setEvoReqs(record)
+            self._logger.log(state.digimonData[i].evoReqsToString() + "\n")
+
+    # ------------------------------------------------------------------
+    # Starters
+    # ------------------------------------------------------------------
+    def _read_starters(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Starter Data"))
+
+        from digimon.util import animIDTechSlot  # local import keeps phase boundary clear
+
+        for i in (0, 1):
+            handle.seek(script_offsets.starterSetDigimonOffset[i], 0)
+            digimon_id = struct.unpack(data.digimonIDFormat, handle.read(1))[0]
+            state.starterID.append(digimon_id)
+            self._logger.log(state.digimonData[digimon_id].name)
+
+            handle.seek(script_offsets.starterLearnTechOffset[i], 0)
+            tech_id = struct.unpack(data.techIDFormat, handle.read(1))[0]
+            state.starterTech.append(tech_id)
+            self._logger.log("0x" + format(tech_id, "02x") + " = tech ID")
+
+            handle.seek(script_offsets.starterEquipAnimOffset[i], 0)
+            anim_id = struct.unpack(data.animIDFormat, handle.read(1))[0]
+            slot = animIDTechSlot(anim_id)
+            state.starterTechSlot.append(slot)
+            self._logger.log("0x" + format(slot, "02x") + " = tech slot")
+
+    # ------------------------------------------------------------------
+    # Recruitments
+    # ------------------------------------------------------------------
+    def _read_recruitments(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Recruitment Data"))
+
+        err = False
+        for (trigger_offsets, name_offsets, trigger_byte, digimon_id) in script_offsets.recruitOffsets:
+            verified_offsets = []
+            for ofst in trigger_offsets:
+                handle.seek(ofst, 0)
+                value = struct.unpack(
+                    script_offsets.recruitFormat,
+                    handle.read(struct.calcsize(script_offsets.recruitFormat)),
+                )[0]
+                if value != trigger_byte:
+                    self._logger.logError(
+                        "Error: Looking for recruit trigger check, found incorrect value: "
+                        + str(value) + " @ " + format(ofst, "08x")
+                    )
+                    err = True
+                else:
+                    verified_offsets.append(ofst)
+
+            for name_ofst in name_offsets:
+                handle.seek(name_ofst, 0)
+                expected_name = scrutil.encode(state.digimonData[digimon_id].name)
+                actual_name = handle.read(len(expected_name))
+
+                if expected_name != actual_name:
+                    self._logger.logError(
+                        "Error: Looking for recruit" + state.digimonData[digimon_id].name
+                        + ", found incorrect value: " + scrutil.decode(actual_name)
+                        + " @ " + format(name_ofst, "08x")
+                    )
+                    err = True
+
+            state.recruitData[trigger_byte] = (tuple(verified_offsets), digimon_id, name_offsets)
+
+        if not err:
+            self._logger.log("All recruitment check values verified.")
+
+    # ------------------------------------------------------------------
+    # Special evolutions
+    # ------------------------------------------------------------------
+    def _read_special_evolutions(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Special Evolution Data"))
+
+        err = False
+        for offsets, check_val, from_val in script_offsets.specEvoOffsets:
+            for ofst in offsets:
+                handle.seek(ofst, 0)
+                actual = struct.unpack(
+                    script_offsets.specEvoFormat,
+                    handle.read(struct.calcsize(script_offsets.specEvoFormat)),
+                )[0]
+                if actual != check_val:
+                    self._logger.logError(
+                        "Error: Looking for spec evo, found incorrect value: "
+                        + str(actual) + " @ " + format(ofst, "08x")
+                    )
+                    err = True
+
+            state.specEvos[offsets] = (check_val, from_val)
+
+        if not err:
+            self._logger.log("All special evolutions verified.")
+
+    # ------------------------------------------------------------------
+    # Script-driven item placements
+    # ------------------------------------------------------------------
+    def _read_chest_items(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Chest Item Data"))
+
+        for ofst in script_offsets.chestItemOffsets:
+            handle.seek(ofst, 0)
+            cmd, item_id = struct.unpack(
+                script_offsets.chestItemFormat,
+                handle.read(struct.calcsize(script_offsets.chestItemFormat)),
+            )
+            if cmd != scrutil.spawnChest:
+                self._logger.logError(
+                    "Error: Looking for chest item, found incorrect command: "
+                    + str(cmd) + " @ " + format(ofst, "08x")
+                )
+            else:
+                state.chestItems[ofst] = item_id
+
+        for item_id in state.chestItems.values():
+            self._logger.log("Chest contains: '" + state.itemData[item_id].name + "'")
+
+    def _read_map_items(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Map Item Data"))
+
+        for ofst in script_offsets.mapItemOffsets:
+            handle.seek(ofst, 0)
+            cmd, item_id = struct.unpack(
+                script_offsets.mapItemFormat,
+                handle.read(struct.calcsize(script_offsets.mapItemFormat)),
+            )
+            if cmd != scrutil.spawnItem:
+                self._logger.logError(
+                    "Error: Looking for map item, found incorrect command: "
+                    + str(cmd) + " @ " + format(ofst, "08x")
+                )
+            else:
+                self._logger.log(" '" + state.itemData[item_id].name + "' spawns on the map.")
+                state.mapItems[ofst] = item_id
+
+    def _read_tokomon_items(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Tokomon Item Data"))
+
+        for ofst in script_offsets.tokoItemOffsets:
+            handle.seek(ofst, 0)
+            cmd, item_id, count = struct.unpack(
+                script_offsets.tokoItemFormat,
+                handle.read(struct.calcsize(script_offsets.tokoItemFormat)),
+            )
+            if cmd != scrutil.giveItem:
+                self._logger.logError(
+                    "Error: Looking for Tokomon item, found incorrect command: "
+                    + str(cmd) + " @ " + format(ofst, "08x")
+                )
+            else:
+                state.tokoItems[ofst] = (item_id, count)
+
+        for item_id, count in state.tokoItems.values():
+            self._logger.log(
+                "Tokomon gives: " + str(count) + "x '"
+                + state.itemData[item_id].name + "'"
+            )
+
+    def _read_tech_gifts(self, handle: BinaryIO, state: RomState) -> None:
+        self._logger.log(self._logger.getHeader("Read Tech Gift Data"))
+
+        for i, ofst in enumerate(script_offsets.learnMoveOffsets):
+            handle.seek(ofst, 0)
+            cmd, tech_id = struct.unpack(
+                script_offsets.learnMoveFormat,
+                handle.read(struct.calcsize(script_offsets.learnMoveFormat)),
+            )
+            if cmd != scrutil.learnMove:
+                self._logger.logError(
+                    "Error: Looking for tech learning gift, found incorrect command: "
+                    + str(cmd) + " @ " + format(ofst, "08x")
+                )
+            else:
+                state.techGifts[(ofst, script_offsets.checkMoveOffsets[i])] = tech_id
+
+        for tech_id in state.techGifts.values():
+            tech_name = state.techData[tech_id].name if tech_id < len(state.techData) else "None"
+            self._logger.log("Tech gift: '" + tech_name + "'")
+
+    # ------------------------------------------------------------------
+    # Jukebox
+    # ------------------------------------------------------------------
+    def _read_jukebox_track_names(self, handle: BinaryIO, state: RomState) -> None:
+        state.trackNames = read_block_with_exclusions(
+            handle,
+            blocks.trackNameBlockOffset, blocks.trackNameBlockSize,
+            blocks.trackNameExclusionOffsets, blocks.trackNameExclusionSize,
+        )

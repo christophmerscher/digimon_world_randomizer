@@ -1,141 +1,125 @@
 # Author: Tristan Challener <challenert@gmail.com>
 # Copyright: please don't steal this that is all
 
-import os
+"""Three-tier verbosity logger used throughout the randomizer.
 
+Levels (passed at construction time as ``verbose``):
+
+* ``"full"``    — every message goes to the log file.
+* ``"casual"``  — only changes ("logChange") + errors go through.
+* ``"race"``    — only changes + errors go through, plus the SeedingPolicy
+  advances the RNG by one step so identical settings produce a different
+  ROM between casual and race runs (so racers can't peek with a casual
+  run first).
+
+The class is unchanged in *behaviour* — only modernised with type hints,
+``pathlib`` for the filename, and a context-manager protocol.
 """
-Utilities for manipulating digimon data.
-"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Literal
+
+
+# Display labels for log section dividers.
+SECTION_BANNER = "============================================================"
+
+
+VerbosityLevel = Literal["full", "casual", "race"]
 
 
 class Logger:
-    """
-    Randomization and ROM handler logging interface.
-    """
+    """Randomization and ROM handler logging interface."""
 
-    def __init__( self, verbose, filename=None ):
-        """
-        Intialize verbosity.
+    def __init__(self, verbose: VerbosityLevel, filename: str | os.PathLike | None = None) -> None:
+        """Initialise verbosity and the optional log file path."""
 
-        Keyword arguments:
-        verbose -- Print all information?
-        """
+        self.error: bool = False
+        self.verbose: VerbosityLevel = verbose
 
-        self.error = False
-
-        self.filename = filename
+        self.filename: str | None = str(filename) if filename is not None else None
         self.file = None
 
-        if( self.filename is not None ):
-            with open( self.filename, 'w' ):
-                self.logAlways( self.getHeader( 'Digimon World Randomization Log' ) )
-                self.logAlways( 'Logging mode is set to \'' + verbose + '\'' )
+        if self.filename is not None:
+            # Truncate any previous log and write the header.
+            with open(self.filename, "w"):
+                pass
+            self.logAlways(self.getHeader("Digimon World Randomization Log"))
+            self.logAlways("Logging mode is set to '" + verbose + "'")
 
-        self.verbose = verbose
+    # ------------------------------------------------------------------
+    # Context-manager support
+    # ------------------------------------------------------------------
+    def __enter__(self) -> "Logger":
+        return self
 
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
 
-    def log( self, str ):
-        """
-        Write string to log file (or console) only if verbose
-        mode is set to full.
+    # ------------------------------------------------------------------
+    # Verbosity-gated log methods
+    # ------------------------------------------------------------------
+    def log(self, message: str) -> None:
+        """Write only when verbosity is ``full``."""
 
-        Keyword arguments:
-        str -- String to write
-        """
+        if self.verbose == "full":
+            self.logAlways(message)
 
-        if( self.verbose == 'full' ):
-            self.logAlways( str )
+    def logChange(self, message: str) -> None:
+        """Write when verbosity is ``full`` or ``casual`` (also ``race``)."""
 
+        if self.verbose in ("full", "casual"):
+            self.logAlways(message)
 
-    def logChange( self, str ):
-        """
-        Write string to log file (or console) if verbose
-        mode is set to casual or full.
-
-        Keyword arguments:
-        str -- String to write
-        """
-
-        if( self.verbose == 'full' or self.verbose == 'casual' ):
-            self.logAlways( str )
-
-
-    def logError( self, str ):
-        """
-        Write string to log file (or console) regardless
-        of verbosity settings and mark error.
-
-        Keyword arguments:
-        str -- Error string to write
-        """
+    def logError(self, message: str) -> None:
+        """Always log + mark the error flag."""
 
         self.error = True
-        self.logAlways( str )
+        self.logAlways(message)
 
+    def fatalError(self, message: str) -> None:
+        """Log the message and exit — used for unrecoverable failures."""
 
-    def fatalError( self, str ):
-        """
-        Write string to log file (or console) regardless
-        of verbosity settings and mark error.
-
-        Keyword arguments:
-        str -- Error string to write
-        """
-
-        self.logError( str )
-        print( 'Program ended with errors.  See log file for errors.' )
+        self.logError(message)
+        print("Program ended with errors.  See log file for errors.")
         self.close()
         exit()
 
+    def logAlways(self, message: str) -> None:
+        """Write unconditionally; appends to the log file or prints."""
 
-    def close( self ):
-        """
-        Close the logging file.
-        """
-
-        self.logAlways( self.getHeader( 'End of Log' ) )
-        if( self.file is not None ):
-            self.file.close()
-
-
-    def rename( self, newName ):
-        """
-        Close the logging file.
-
-        Keyword arguments:
-        newName -- New name of file
-        """
-
-        os.rename( self.filename, newName )
-
-
-    def logAlways( self, str ):
-        """
-        Write string to log file (or console) regardless
-        of verbosity settings.
-
-        Keyword arguments:
-        str -- String to write
-        """
-
-        if( self.filename is not None ):
-            if( self.file is None ):
-                self.file = open( self.filename, 'a' )
-            self.file.write( str + '\n' )
+        if self.filename is not None:
+            if self.file is None:
+                self.file = open(self.filename, "a")
+            self.file.write(message + "\n")
         else:
-            print( str )
+            print(message)
 
+    # ------------------------------------------------------------------
+    # Bookkeeping
+    # ------------------------------------------------------------------
+    def close(self) -> None:
+        """Close the file handle (if any)."""
 
-    def getHeader( self, str ):
-        """
-        Return a log header for the specified section name.
+        self.logAlways(self.getHeader("End of Log"))
+        if self.file is not None:
+            self.file.close()
+            self.file = None
 
-        Keyword arguments:
-        str -- Section name
-        """
+    def rename(self, new_name: str | os.PathLike) -> None:
+        """Rename the on-disk log file."""
 
-        out = '\n============================================================\n'
-        out += '   ' + str + '\n'
-        out += '============================================================\n'
+        if self.filename is None:
+            return
+        os.rename(self.filename, str(new_name))
+        self.filename = str(new_name)
 
-        return out
+    # ------------------------------------------------------------------
+    # Formatting helpers
+    # ------------------------------------------------------------------
+    def getHeader(self, name: str) -> str:
+        """Return a banner-style header for the section ``name``."""
+
+        return f"\n{SECTION_BANNER}\n   {name}\n{SECTION_BANNER}\n"

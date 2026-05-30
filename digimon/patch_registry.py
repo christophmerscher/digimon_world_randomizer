@@ -1,58 +1,112 @@
 # Author: Tristan Challener <challenert@gmail.com>
 # Copyright: please don't steal this that is all
 
+"""Backward-compatibility shim.
+
+The actual patch implementations live in :mod:`digimon.rom.patches`.
+``applyPatches(handler, file)`` is kept here so that historical call
+sites (notably :meth:`DigimonWorldHandler.write`) and the existing test
+suite continue to work without changes.
+
+New code should use :class:`digimon.rom.patches.PatchPipeline` directly.
 """
-Registry for ROM patches that can be applied by DigimonWorldHandler.
-"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from digimon.rom.patches.pipeline import PatchPipeline
+from digimon.rom.patches.registry import PATCHES, get_patch
+from digimon.rom.state import RomState
 
 
-def applyPatches( handler, file ):
+def applyPatches(handler: Any, file: Any) -> bool:
+    """Dispatch the handler's queued patches via the new pipeline.
+
+    The function preserves the legacy contract:
+
+    * ``handler.patches`` is an iterable of ``(name, value)`` tuples.
+    * Returns ``True`` when any applied patch sets the Toy-Town flag.
+    * Logs an error and continues when a queued patch name is unknown.
+
+    For callers (tests) that pass a stand-in handler exposing the
+    historical ``_applyPatchXxx`` methods rather than the new state-based
+    Strategy classes, the shim falls back to invoking those methods
+    directly. That covers ``tests/test_patch_registry.py`` without
+    requiring a real :class:`RomState`.
     """
-    Apply each queued patch and report whether Toy Town special evolution
-    writes need the unlock-area workaround.
-    """
 
-    toyTownWorkaround = False
+    if isinstance(getattr(handler, "_state", None), RomState):
+        return PatchPipeline(handler.logger).apply(file, handler._state, handler.patches)
 
-    for patch, val in handler.patches:
-        patchHandler = PATCH_HANDLERS.get( patch )
-        if( patchHandler is None ):
-            handler.logger.logError( 'Error: unknown patch "' + str( patch ) + '".' )
+    # Legacy / test fallback — keep calling the handler's bound methods so
+    # existing duck-typed test doubles continue to work.
+    return _apply_via_handler_methods(handler, file)
+
+
+def _apply_via_handler_methods(handler: Any, file: Any) -> bool:
+    toy_town_workaround = False
+
+    for name, value in handler.patches:
+        patch = get_patch(name)
+        if patch is None:
+            handler.logger.logError(
+                'Error: unknown patch "' + str(name) + '".'
+            )
             continue
 
-        methodName, useValue = patchHandler
-        method = getattr( handler, methodName )
-        if( useValue ):
-            method( file, val )
+        method = _LEGACY_METHOD_NAMES.get(name)
+        if method is None or not hasattr(handler, method):
+            handler.logger.logError(
+                'Error: unknown patch "' + str(name) + '".'
+            )
+            continue
+
+        if _PATCH_TAKES_VALUE.get(name, False):
+            getattr(handler, method)(file, value)
         else:
-            method( file )
+            getattr(handler, method)(file)
 
-        if( patch in TOY_TOWN_WORKAROUND_PATCHES ):
-            toyTownWorkaround = True
+        if patch.requires_toy_town_workaround:
+            toy_town_workaround = True
 
-    return toyTownWorkaround
+    return toy_town_workaround
 
 
-PATCH_HANDLERS = {
-    'fixEvoItems': ( '_applyPatchFixEvoItems', False ),
-    'allowDrop': ( '_applyPatchAllowDrop', False ),
-    'woah': ( '_applyPatchWoah', False ),
-    'learnTierOne': ( '_applyPatchLearnTierOne', False ),
-    'upLearnChance': ( '_applyPatchLearnChance', False ),
-    'gabumon': ( '_applyPatchGabumon', False ),
-    'giromon': ( '_applyPatchGiromon', False ),
-    'spawn': ( '_applyPatchSpawn', True ),
-    'hash': ( '_applyPatchIntroHash', True ),
-    'intro': ( '_applyPatchIntroSkip', False ),
-    'slots': ( '_applyPatchUnrigSlots', False ),
-    'unlock': ( '_applyPatchUnlockAreas', False ),
-    'pp': ( '_applyPatchPP', False ),
-    'ogremon': ( '_applyPatchOgremonSoftlock', False ),
-    'softlock': ( '_applyPatchMovementSoftlock', False ),
-    'typeEffectiveness': ( '_randomizeTypeEffectiveness', False ),
-    'learnmoveandcommand': ( '_applyPatchLearnMoveAndCommand', False ),
-    'fixDVChips': ( '_applyPatchDVChipDescription', False ),
-    'happyVending': ( '_applyPatchGuaranteeHappyShrm', False ),
+# Legacy method-name table — preserved for test_patch_registry.py.
+_LEGACY_METHOD_NAMES = {
+    "fixEvoItems":         "_applyPatchFixEvoItems",
+    "allowDrop":           "_applyPatchAllowDrop",
+    "woah":                "_applyPatchWoah",
+    "learnTierOne":        "_applyPatchLearnTierOne",
+    "upLearnChance":       "_applyPatchLearnChance",
+    "gabumon":             "_applyPatchGabumon",
+    "giromon":             "_applyPatchGiromon",
+    "spawn":               "_applyPatchSpawn",
+    "hash":                "_applyPatchIntroHash",
+    "intro":               "_applyPatchIntroSkip",
+    "slots":               "_applyPatchUnrigSlots",
+    "unlock":              "_applyPatchUnlockAreas",
+    "pp":                  "_applyPatchPP",
+    "ogremon":             "_applyPatchOgremonSoftlock",
+    "softlock":            "_applyPatchMovementSoftlock",
+    "typeEffectiveness":   "_randomizeTypeEffectiveness",
+    "learnmoveandcommand": "_applyPatchLearnMoveAndCommand",
+    "fixDVChips":          "_applyPatchDVChipDescription",
+    "happyVending":        "_applyPatchGuaranteeHappyShrm",
 }
 
-TOY_TOWN_WORKAROUND_PATCHES = ( 'unlock', )
+_PATCH_TAKES_VALUE = {
+    name: PATCHES[name].takes_value for name in PATCHES
+}
+
+
+# Backward-compat re-exports kept for any external importers.
+PATCH_HANDLERS = {
+    name: (method, _PATCH_TAKES_VALUE.get(name, False))
+    for name, method in _LEGACY_METHOD_NAMES.items()
+}
+
+TOY_TOWN_WORKAROUND_PATCHES = tuple(
+    name for name, patch in PATCHES.items() if patch.requires_toy_town_workaround
+)

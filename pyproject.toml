@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "digimon-world-randomizer"
+version = "1.1.2"
+description = "Digimon World 1 (PSX) data randomizer."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Tristan Challener", email = "challenert@gmail.com" },
+    { name = "Christoph Merscher", email = "dev@fmerscher.com" },
+]
+keywords = ["digimon", "psx", "rom", "randomizer"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Games/Entertainment",
+]
+dependencies = []
+
+[project.scripts]
+digimon-randomize = "digimon_randomize:main"
+
+[tool.setuptools]
+packages = [
+    "digimon",
+    "digimon.models",
+    "digimon.rom",
+    "data",
+    "data.digimon",
+    "data.technique",
+    "log",
+    "script",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line-too-long handled by formatter
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+ignore_missing_imports = true

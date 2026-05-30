@@ -1,215 +1,101 @@
 # Author: Tristan Challener <challenert@gmail.com>
 # Copyright: please don't steal this that is all
 
+"""Backward-compatibility shim for the legacy ``digimon.util`` API.
+
+The binary-codec helpers (``readDataWithExclusions`` &c.) now live in
+:mod:`digimon.rom.struct_codec`; the name-lookup helpers wrap the
+dictionaries in :mod:`digimon.rom.enums`. Both groups are re-exported
+here under their original names so existing callers continue to work
+while the refactor progresses.
 """
-Utilities for manipulating digimon data.
-"""
+
+from __future__ import annotations
 
 import digimon.data as data
-import sys
-import struct
+from digimon.rom.struct_codec import (
+    pack_array as _pack_array,
+    read_block_with_exclusions as _read_block_with_exclusions,
+    unpack_array as _unpack_array,
+    write_block_with_exclusions as _write_block_with_exclusions,
+    write_value as _write_value,
+)
 
 
-def writeDataToFile( file, ofst, data, logger ):
-    """
-    Convert specified value to bytes and write to file.
+# ---------------------------------------------------------------------------
+# Binary IO (legacy names)
+# ---------------------------------------------------------------------------
 
-    Keyword arguments:
-    file -- File pointer opened in binary mode.
-    ofst -- Offset to write to.
-    data -- String of data to write.
-    logger -- Logger to use to record activity.
-    """
-    file.seek( ofst, 0 )
+def writeDataToFile(file, ofst, data, logger):
+    """Write ``data`` bytes at the given offset; mirrors legacy signature."""
 
-    #logger.log( 'Writing ' + str( len( data ) ) + ' bytes to the file.' )
-
-    return file.write( data )
+    return _write_value(file, ofst, data, logger)
 
 
-def readDataWithExclusions( file, ofst, sz, excls, excl_sz ):
-    """
-    Read data from file, excluding selected sections.
-
-    Keyword arguments:
-    file -- File pointer.
-    ofst -- Offset to start reading from.
-    sz   -- Length of data block to read (includes
-            exclusion sections).
-    excls -- List of offset exclusion starting points.
-    excl_sz -- Size of exclusions (all must be same size).
-    """
-
-    file.seek( ofst, 0 )
-    out = b''
-
-    bytes_read = 0
-    for nextExcl in excls:
-        pos = ofst + bytes_read
-        bytes_to_read = nextExcl - pos
-        out += file.read( bytes_to_read )
-        file.seek( excl_sz, 1 )
-        bytes_read += bytes_to_read + excl_sz
-
-    out += file.read( sz - bytes_read )
-
-    return out
+def readDataWithExclusions(file, ofst, sz, excls, excl_sz):
+    return _read_block_with_exclusions(file, ofst, sz, excls, excl_sz)
 
 
-def writeDataWithExclusions( file, buf, ofst, sz, excls, excl_sz ):
-    """
-    Write data to file, skipping exclusion sections.
-
-    Keyword arguments:
-    file -- File pointer.
-    buf -- Data to write to file.
-    ofst -- Offset to start reading from.
-    sz   -- Length of data block to write (includes
-            exclusion sections).
-    excls -- List of offset exclusion starting points.
-    excl_sz -- Size of exclusions (all must be same size).
-    """
-
-    if not sz == ( len( buf ) + ( len( excls ) * excl_sz ) ):
-        print( 'Error: trying to write data with size not '
-             + 'matching expected size.' )
-        print( str( sz ) + ' ' + str( len( buf ) + ( len( excls ) * excl_sz ) ) )
-        return
-
-    file.seek( ofst, 0 )
-
-    bytes_written = 0
-    excluded_bytes = 0
-    for nextExcl in excls:
-        pos = ofst + bytes_written + excluded_bytes
-        bytes_to_write = nextExcl - pos
-        file.write( buf[ bytes_written:bytes_written + bytes_to_write ] )
-        file.seek( excl_sz, 1 )
-        bytes_written += bytes_to_write
-        excluded_bytes += excl_sz
-
-    file.write( buf[ bytes_written: ] )
+def writeDataWithExclusions(file, buf, ofst, sz, excls, excl_sz):
+    return _write_block_with_exclusions(file, buf, ofst, sz, excls, excl_sz)
 
 
-def unpackDataArray( buf, fmt, count ):
-    """
-    Parse data as an array of structs.  Return
-    a list of tuples of attributes.
-
-    Keyword arguments:
-    buf -- String of data.
-    fmt -- Struct format.
-    count -- Length of array.
-    """
-
-    fmt_sz = struct.calcsize( fmt )
-
-    data = []
-
-    if not count * fmt_sz == len( buf ):
-        print( 'Error: trying to parse data array with size '
-             + 'not matching expected size.' + str( len( buf ) ) + ' ' + str( count * fmt_sz ) )
-        return []
-
-    for i in range( count ):
-        data.append( struct.unpack_from( fmt, buf, i * fmt_sz ) )
-
-    return data
+def unpackDataArray(buf, fmt, count):
+    return _unpack_array(buf, fmt, count)
 
 
-def packDataArray( list, fmt ):
-    """
-    Pack data array into buffer.  Retuns
-    a string (or bytes object) representing
-    the data.
-
-    Keyword arguments:
-    list -- List of attribute tuple representing
-            structs.
-    fmt -- Struct format.
-    """
-
-    buf = b''
-
-    for tuple in list:
-        buf += struct.pack( fmt, *tuple )
-
-    return buf
-
-    #for data_tuple
+def packDataArray(records, fmt):
+    return _pack_array(records, fmt)
 
 
-def typeIDToName( id ):
-    """
-    Convert type ID to name.
+# ---------------------------------------------------------------------------
+# Name lookups (legacy names)
+# ---------------------------------------------------------------------------
 
-    Keyword argument:
-    id -- Type ID to convert.
-    """
-
-    if( id in data.types ):
-        return data.types[ id ]
-    return "UNDEFINED"
+def typeIDToName(id: int) -> str:
+    return data.types.get(id, "UNDEFINED")
 
 
-def levelIDToName( id ):
-    """
-    Convert level ID to name.
-
-    Keyword argument:
-    id -- Level ID to convert.
-    """
-
-    if( id in data.levels ):
-        return data.levels[ id ]
-    return "UNDEFINED"
+def levelIDToName(id: int) -> str:
+    return data.levels.get(id, "UNDEFINED")
 
 
-def specIDToName( id ):
-    """
-    Convert specialty ID to name.
-
-    Keyword argument:
-    id -- Specialty ID to convert.
-    """
-
-    if( id in data.specs ):
-        return data.specs[ id ]
-    return "-"
+def specIDToName(id: int) -> str:
+    return data.specs.get(id, "-")
 
 
-def techSlotAnimID( slot ):
-    """
-    Get the animation ID for the specified tech slot.
+# ---------------------------------------------------------------------------
+# Tech slot / animation ID conversion
+# ---------------------------------------------------------------------------
 
-    Keyword arguments:
-    slot -- Tech slot to convert (1 to 16)
-    """
+# Move slots are 1-indexed; their animations are stored 0-indexed starting at
+# this anim ID. So slot 1 maps to anim 0x2E, slot 2 to 0x2F, etc.
+TECH_SLOT_ANIM_BASE = 0x2E
+TECH_SLOT_COUNT = 16
 
-    if( slot < 1 or slot > 16 ):
-        print( 'Error: Tried to use an invalid tech slot: ' + format( slot, '02x' ) )
+
+def techSlotAnimID(slot: int) -> int:
+    """Convert a 1..16 tech slot number into its animation ID."""
+
+    if slot < 1 or slot > TECH_SLOT_COUNT:
+        print(
+            "Error: Tried to use an invalid tech slot: " + format(slot, "02x")
+        )
         slot = 1
 
-    #Move slots index from 1 and the move animations index from 0x2E
-    #So slot 1 in animation 0x2E
-    return 0x2E + (slot - 1)
+    return TECH_SLOT_ANIM_BASE + (slot - 1)
 
 
-def animIDTechSlot( anim ):
-    """
-    Get the tech slot for the specified animation ID.
+def animIDTechSlot(anim: int) -> int:
+    """Convert an animation ID back into its 1..16 tech slot number."""
 
-    Keyword arguments:
-    anim -- Animation ID to convert (2E to 3D)
-    """
+    slot = anim - TECH_SLOT_ANIM_BASE + 1
 
-    #Move slots index from 1 and the move animations index from 0x2E
-    #So slot 1 in animation 0x2E
-    slot = anim - 0x2E + 1
-
-    if( slot < 1 or slot > 16 ):
-        print( 'Error: Tried to read an invalid animation ID as a tech slot: ' + format( slot, '02x' ) )
+    if slot < 1 or slot > TECH_SLOT_COUNT:
+        print(
+            "Error: Tried to read an invalid animation ID as a tech slot: "
+            + format(slot, "02x")
+        )
         slot = 1
 
     return slot
-
