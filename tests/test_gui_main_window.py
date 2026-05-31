@@ -53,19 +53,15 @@ class MainWindowTests(unittest.TestCase):
                     len(widget.section_widgets), len(tab.sections),
                 )
 
-    def test_load_save_randomize_buttons_log_a_placeholder_message(self):
+    def test_randomize_button_logs_placeholder_until_worker_lands(self):
+        # Load and Save have real implementations as of commit 13 (see
+        # tests/test_gui_load_save.py). Randomize stays a placeholder
+        # until the worker lands in the next commit.
         from gui_qt.main_window import MainWindow
 
         window = MainWindow()
-        # All three buttons currently log a "not wired up yet" message.
-        window.header_bar.load_clicked.emit()
-        window.header_bar.save_clicked.emit()
         window.header_bar.randomize_clicked.emit()
-
-        terminal_text = window.terminal.toPlainText()
-        self.assertIn("Load Settings",  terminal_text)
-        self.assertIn("Save Settings",  terminal_text)
-        self.assertIn("Randomize",      terminal_text)
+        self.assertIn("Randomize", window.terminal.toPlainText())
 
     def test_header_bar_edits_the_main_window_model(self):
         from gui_qt.main_window import MainWindow

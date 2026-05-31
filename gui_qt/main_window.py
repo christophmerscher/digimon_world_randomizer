@@ -19,7 +19,10 @@ the launcher finally shows the full UI.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtWidgets import (
+    QFileDialog,
     QMainWindow,
     QTabWidget,
     QVBoxLayout,
@@ -36,6 +39,8 @@ from gui_qt.widgets.terminal_widget import LineKind, TerminalWidget
 APP_TITLE = "Digimon World Randomizer"
 WINDOW_WIDTH = 900
 WINDOW_HEIGHT = 800
+
+SETTINGS_FILE_FILTER = "Settings file (*.json);;All files (*)"
 
 
 class MainWindow(QMainWindow):
@@ -88,15 +93,46 @@ class MainWindow(QMainWindow):
         self._header.randomize_clicked.connect(self._on_randomize_clicked)
 
     def _on_load_settings_clicked(self) -> None:
-        # Implemented in the next commit (load/save dialogs).
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load settings", "", SETTINGS_FILE_FILTER,
+        )
+        if not path:
+            return
+
+        try:
+            payload = Path(path).read_text(encoding="utf-8")
+            new_settings = SettingsModel.from_json(payload)
+        except (OSError, ValueError) as exc:
+            self._terminal.append_line(
+                f"Failed to load settings: {exc}", LineKind.ERROR,
+            )
+            return
+
+        self._replace_settings(new_settings)
         self._terminal.append_line(
-            "Load Settings is not wired up yet.", LineKind.INFO,
+            f"Loaded settings from {path}", LineKind.CHANGE,
         )
 
     def _on_save_settings_clicked(self) -> None:
-        # Implemented in the next commit (load/save dialogs).
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save settings", "settings.json", SETTINGS_FILE_FILTER,
+        )
+        if not path:
+            return
+
+        try:
+            Path(path).write_text(self._settings.to_json(), encoding="utf-8")
+        except OSError as exc:
+            self._terminal.append_line(
+                f"Failed to save settings: {exc}", LineKind.ERROR,
+            )
+            return
+
+        # to_json() also updates self.General.Hash; refresh the header so
+        # the displayed Seed/LogLevel/etc. stay in sync.
+        self._header.refresh_from_model()
         self._terminal.append_line(
-            "Save Settings is not wired up yet.", LineKind.INFO,
+            f"Saved settings to {path}", LineKind.CHANGE,
         )
 
     def _on_randomize_clicked(self) -> None:
@@ -104,6 +140,25 @@ class MainWindow(QMainWindow):
         self._terminal.append_line(
             "Randomize is not wired up yet.", LineKind.INFO,
         )
+
+    # ------------------------------------------------------------------
+    # Settings replacement
+    # ------------------------------------------------------------------
+
+    def _replace_settings(self, new_settings: SettingsModel) -> None:
+        """Swap the active model and rebuild the inputs that bind to it.
+
+        The header bar and tab widgets all hold direct references to the
+        previous model's dataclasses, so they have to be rebuilt for the
+        new values to appear in the UI. The terminal is preserved so
+        load/save messages remain visible across the rebuild.
+        """
+
+        self._settings = new_settings
+        self._header   = HeaderBar(self._settings.General)
+        self._tabs     = self._build_tabs()
+        self._wire_signals()
+        self.setCentralWidget(self._build_central_widget())
 
     # ------------------------------------------------------------------
     # Inspection helpers (used by tests)
