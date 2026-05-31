@@ -23,13 +23,8 @@ digimon_word_venv/
 # Build artefacts
 build/
 dist/
-gui/node_modules/
-gui/dist/
-gui/digimon_randomize-win32-x64/
 
 # Editable-install marker
 *.egg-info/
-
-gui/TEMP__last_settings.ini
 
 out.txt
