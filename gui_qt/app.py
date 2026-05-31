@@ -31,11 +31,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         raise SystemExit(2) from exc
 
-    # Defer the import so the bare ``gui_qt`` package stays Qt-free.
+    # Defer the imports so the bare ``gui_qt`` package stays Qt-free.
     from gui_qt.main_window import MainWindow
+    from gui_qt.theme import apply_theme
 
     qt_argv = argv if argv is not None else sys.argv
     qt_app = QApplication(qt_argv)
+    apply_theme(qt_app)
 
     window = MainWindow()
     window.show()

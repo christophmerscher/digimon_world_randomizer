@@ -51,6 +51,8 @@ class TabWidget(QWidget):
 
         body = QWidget(scroll)
         body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(4, 4, 4, 4)
+        body_layout.setSpacing(14)
 
         for section in self._tab_config.sections:
             section_data = getattr(self._settings, section.model_attr)

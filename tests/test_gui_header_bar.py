@@ -110,6 +110,16 @@ class HeaderBarTests(unittest.TestCase):
         self.assertTrue(randomize.isEnabled())
         self.assertEqual(randomize.text(), "Randomize")
 
+    def test_randomize_button_carries_primary_object_name_for_accent_styling(self):
+        from PyQt6.QtWidgets import QPushButton
+
+        _, bar = self._build_widget()
+        randomize = next(
+            b for b in bar.findChildren(QPushButton)
+            if b.text() in {"Randomize", "Randomizing..."}
+        )
+        self.assertEqual(randomize.objectName(), "primaryButton")
+
     def test_refresh_from_model_updates_every_input(self):
         from PyQt6.QtWidgets import QLineEdit
 

@@ -159,10 +159,14 @@ class HeaderBar(QWidget):
 
     def _build_right_column(self) -> QVBoxLayout:
         column = QVBoxLayout()
+        column.setSpacing(8)
 
         self._load_button      = QPushButton("Load Settings")
         self._save_button      = QPushButton("Save Settings")
         self._randomize_button = QPushButton(_RANDOMIZE_IDLE_LABEL)
+
+        # objectName picks up the accent style in the theme stylesheet.
+        self._randomize_button.setObjectName("primaryButton")
 
         self._load_button.clicked.connect(self.load_clicked.emit)
         self._save_button.clicked.connect(self.save_clicked.emit)
