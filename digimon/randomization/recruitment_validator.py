@@ -13,13 +13,25 @@ from __future__ import annotations
 
 from typing import Any
 
+from data.digimon import ChampionDigimon, PerfectDigimon
 from digimon.rom.state import RomState
 
 
-# Champions in Factorial Town that require Whamon to be recruited first.
-FACTORIAL_TOWN_DIGIS = frozenset(
-    ("Numemon", "MetalMamemon", "Andromon", "Giromon")
-)
+# Champions / Ultimates in Factorial Town that require Whamon to be
+# recruited first. Names are pulled from the data/ enums so a typo in
+# either place fails at import time rather than silently letting an
+# invalid recruit configuration through.
+FACTORIAL_TOWN_DIGIS = frozenset((
+    ChampionDigimon.NUMEMON.display_name,
+    PerfectDigimon.METALMAMEMON.display_name,
+    PerfectDigimon.ANDROMON.display_name,
+    PerfectDigimon.GIROMON.display_name,
+))
+
+# Nanimon is in Factorial Town too, but recruiting it does NOT need
+# Whamon (it shares a path via Ogremon's cave); the validator keeps an
+# explicit override for it.
+NANIMON_NAME = ChampionDigimon.NANIMON.display_name
 
 
 class RecruitmentValidator:
@@ -29,13 +41,15 @@ class RecruitmentValidator:
         self._lookup = lookup
 
     def is_valid(self, state: RomState) -> bool:
+        whamon_name = ChampionDigimon.WHAMON.display_name
+
         for trigger in state.recruitData:
             recruited = self._lookup.getDigimonName(trigger - 200)
             showed_up = self._lookup.getDigimonName(state.recruitData[trigger][1])
 
-            if showed_up == "Whamon" \
-               and recruited in FACTORIAL_TOWN_DIGIS \
-               and recruited != "Nanimon":
+            if (showed_up == whamon_name
+                    and recruited in FACTORIAL_TOWN_DIGIS
+                    and recruited != NANIMON_NAME):
                 return False
 
         return True

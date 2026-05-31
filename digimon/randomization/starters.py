@@ -5,11 +5,22 @@ from __future__ import annotations
 import random
 
 import digimon.data as data
+from data.technique import Techniques, tech_id
 from digimon.randomization.base import Randomizer, RandomizationContext
 
 
-# A "weakest tech" picker that ignores these names entirely.
-WEAKEST_TECH_BANNED_NAMES = frozenset(("None", "Counter"))
+# Sentinel returned by ``getTechName`` for an empty tech slot. Lives
+# in :meth:`DigimonWorldHandler.getTechName` so we duplicate it
+# verbatim here rather than importing from the handler (which would
+# pull in PyQt-free / GUI-free model code).
+_NO_TECH_SENTINEL = "None"
+
+# A "weakest tech" picker that ignores these names entirely. Counter
+# is reactive, not a starting tech; the sentinel is for unfilled slots.
+WEAKEST_TECH_BANNED_NAMES = frozenset((
+    _NO_TECH_SENTINEL,
+    data.techs[tech_id(Techniques.COUNTER)],
+))
 
 
 class StartersRandomizer(Randomizer):

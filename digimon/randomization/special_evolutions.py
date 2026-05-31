@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 
+from data.digimon import ChampionDigimon
 from digimon.randomization.base import Randomizer, RandomizationContext
 
 
@@ -41,10 +42,11 @@ class DevimonStatGainOverride(Randomizer):
     """
 
     DEVIMON_STATS = (1500, 2000, 250, 100, 150, 200)
+    _DEVIMON_NAME = ChampionDigimon.DEVIMON.display_name
 
     def apply(self, ctx: RandomizationContext) -> None:
         devimon = next(
-            (d for d in ctx.state.digimonData if d.name == "Devimon"),
+            (d for d in ctx.state.digimonData if d.name == self._DEVIMON_NAME),
             None,
         )
         if devimon is None:

@@ -10,14 +10,31 @@ from __future__ import annotations
 import random
 
 import digimon.data as data
+from data.digimon import ChampionDigimon, PerfectDigimon, RookieDigimon
 from digimon.randomization.base import Randomizer, RandomizationContext
 from digimon.randomization.stat_requirements import StatRequirementGenerator
 
 
 # Digimon whose evolution requirements stay vanilla regardless of mode.
-ROOKIE_PASSTHROUGH    = frozenset(("Kunemon",))
-CHAMPION_PASSTHROUGH  = frozenset(("Numemon", "Sukamon", "Nanimon"))
-ULTIMATE_PASSTHROUGH  = frozenset(("Vademon", "WereGarurumon"))
+# Pulled from the data/ enums so a typo here fails at import time
+# instead of silently letting the randomiser overwrite them.
+ROOKIE_PASSTHROUGH = frozenset((
+    RookieDigimon.KUNEMON.display_name,
+))
+
+CHAMPION_PASSTHROUGH = frozenset((
+    ChampionDigimon.NUMEMON.display_name,
+    ChampionDigimon.SUKAMON.display_name,
+    ChampionDigimon.NANIMON.display_name,
+))
+
+# WereGarurumon isn't in the partner roster enum (it's an unplayable
+# Ultimate the engine only uses internally), so it stays as a literal
+# string here matched against the ROM-supplied name.
+ULTIMATE_PASSTHROUGH = frozenset((
+    PerfectDigimon.VADEMON.display_name,
+    "WereGarurumon",
+))
 
 
 class EvolutionRequirementsRandomizer(Randomizer):
