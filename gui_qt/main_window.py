@@ -11,10 +11,14 @@ The :class:`MainWindow` is the assembly point. It owns one
   :class:`TabConfig`.
 * :class:`TerminalWidget` at the bottom.
 
-Each button click on the header bar is forwarded to a private slot.
-Load Settings, Save Settings and the actual randomiser are wired in
-the following commits; this commit is purely structural assembly so
-the launcher finally shows the full UI.
+Each button on the header bar is wired to a private slot:
+
+* Load Settings opens a file dialog, parses the JSON via
+  :meth:`SettingsModel.from_json`, swaps the model, and rebuilds the
+  header + tabs.
+* Save Settings writes :meth:`SettingsModel.to_json` to a chosen file.
+* Randomize launches a :class:`RandomizerWorker` on a background
+  thread so the UI stays responsive while the randomizer runs.
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ from gui_qt.settings_model import SettingsModel
 from gui_qt.widgets.header_bar import HeaderBar
 from gui_qt.widgets.tab_widget import TabWidget
 from gui_qt.widgets.terminal_widget import LineKind, TerminalWidget
+from gui_qt.worker import RandomizerWorker
 
 
 APP_TITLE = "Digimon World Randomizer"
@@ -52,6 +57,7 @@ class MainWindow(QMainWindow):
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
 
         self._settings = settings if settings is not None else SettingsModel()
+        self._worker: RandomizerWorker | None = None
 
         self._header   = HeaderBar(self._settings.General)
         self._tabs     = self._build_tabs()
@@ -136,10 +142,42 @@ class MainWindow(QMainWindow):
         )
 
     def _on_randomize_clicked(self) -> None:
-        # Implemented in the worker commit.
+        if self._worker is not None and self._worker.isRunning():
+            # Defensive: the header bar disables the button while busy,
+            # but ignore double-clicks just in case.
+            return
+
+        self._terminal.clear_output()
         self._terminal.append_line(
-            "Randomize is not wired up yet.", LineKind.INFO,
+            "Starting randomization...", LineKind.CHANGE,
         )
+
+        # to_json() also refreshes self._settings.General.Hash.
+        payload = self._settings.to_json()
+
+        self._worker = RandomizerWorker(payload, parent=self)
+        self._worker.stdout_line.connect(self._on_worker_stdout)
+        self._worker.stderr_line.connect(self._on_worker_stderr)
+        self._worker.completed.connect(self._on_worker_completed)
+        self._header.set_busy(True)
+        self._worker.start()
+
+    def _on_worker_stdout(self, line: str) -> None:
+        self._terminal.append_line(line, LineKind.INFO)
+
+    def _on_worker_stderr(self, line: str) -> None:
+        self._terminal.append_line(line, LineKind.ERROR)
+
+    def _on_worker_completed(self, success: bool, summary: str) -> None:
+        self._header.set_busy(False)
+        kind = LineKind.CHANGE if success else LineKind.ERROR
+        self._terminal.append_line(summary, kind)
+
+        if success and self._settings.General.Hash:
+            self._terminal.append_line(
+                f"Settings hash: {self._settings.General.Hash}",
+                LineKind.CHANGE,
+            )
 
     # ------------------------------------------------------------------
     # Settings replacement
