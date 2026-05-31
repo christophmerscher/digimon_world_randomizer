@@ -34,6 +34,9 @@ def build_stylesheet(palette: Palette) -> str:
         _checkbox(palette),
         _radio_button(palette),
         _slider(palette),
+        _group_box(palette),
+        _tab_widget(palette),
+        _terminal(palette),
     )).strip()
 
 
@@ -311,5 +314,114 @@ QSlider::handle:horizontal:hover {{
 
 QSlider::handle:horizontal:disabled {{
     background: {p.border_strong};
+}}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Cards (group boxes)
+# ---------------------------------------------------------------------------
+
+def _group_box(p: Palette) -> str:
+    return f"""
+/* --- Section cards (QGroupBox) -------------------------------------- */
+
+QGroupBox {{
+    background-color: {p.surface};
+    border: 1px solid {p.border};
+    border-radius: 10px;
+    margin-top: 14px;
+    padding: 18px 14px 14px 14px;
+    font-weight: 600;
+    color: {p.text};
+}}
+
+QGroupBox::title {{
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 14px;
+    padding: 0 6px;
+    background-color: {p.background};
+    color: {p.text_secondary};
+    font-size: 9pt;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Tabs
+# ---------------------------------------------------------------------------
+
+def _tab_widget(p: Palette) -> str:
+    return f"""
+/* --- Tabs ----------------------------------------------------------- */
+
+QTabWidget::pane {{
+    background-color: {p.background};
+    border: none;
+    border-top: 1px solid {p.border};
+    margin-top: -1px;
+    padding-top: 12px;
+}}
+
+QTabBar {{
+    background: transparent;
+    qproperty-drawBase: 0;
+}}
+
+QTabBar::tab {{
+    background: transparent;
+    color: {p.text_secondary};
+    padding: 9px 18px;
+    margin-right: 4px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+}}
+
+QTabBar::tab:hover {{
+    color: {p.text};
+}}
+
+QTabBar::tab:selected {{
+    color: {p.text};
+    border-bottom: 2px solid {p.accent};
+}}
+
+QTabBar::tab:disabled {{
+    color: {p.text_muted};
+}}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Terminal panel (QPlainTextEdit)
+# ---------------------------------------------------------------------------
+
+def _terminal(p: Palette) -> str:
+    return f"""
+/* --- Terminal panel ------------------------------------------------- */
+
+QPlainTextEdit {{
+    background-color: {p.surface};
+    color: {p.text};
+    border: 1px solid {p.border};
+    border-radius: 8px;
+    padding: 10px 12px;
+    selection-background-color: {p.accent};
+    selection-color: {p.accent_text};
+}}
+
+QPlainTextEdit:focus {{
+    border-color: {p.border_strong};
+}}
+
+/* The QScrollArea used inside each tab keeps the same background as
+   its parent — no inset border. */
+QScrollArea {{
+    border: none;
+    background: transparent;
 }}
 """

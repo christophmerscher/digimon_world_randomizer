@@ -81,6 +81,11 @@ class ApplyThemeTests(unittest.TestCase):
             "QRadioButton",
             "QSlider",
             "QToolTip",
+            "QGroupBox",
+            "QTabWidget",
+            "QTabBar",
+            "QPlainTextEdit",
+            "QScrollArea",
         ):
             with self.subTest(selector=selector):
                 self.assertIn(selector, css)
