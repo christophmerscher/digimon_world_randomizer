@@ -19,7 +19,7 @@ evolutions, and apply a long list of quality-of-life patches.
 ## Table of contents
 
 - [Quickstart](#quickstart)
-  - [Using the GUI (Windows)](#using-the-gui-windows)
+  - [Using the GUI (PyQt6)](#using-the-gui-pyqt6)
   - [Using the CLI (cross-platform)](#using-the-cli-cross-platform)
 - [What you can randomise](#what-you-can-randomise)
   - [1. Starter digimon](#1-starter-digimon)
@@ -46,27 +46,50 @@ evolutions, and apply a long list of quality-of-life patches.
 You need a clean **Digimon World 1 (PSX, USA)** ROM image in `.bin` format.
 The randomizer **does not** distribute the ROM, you must supply your own.
 
-### Using the GUI (Windows)
+### Using the GUI (PyQt6)
 
-1. Download the latest release of `digimon_randomizer.zip`.
-2. Unzip wherever you like.
-3. Launch `digimon_randomize.exe`.
-4. Pick the input ROM (your clean `.bin`) and an output ROM path.
-5. Toggle the features you want, every option has a hover tooltip.
-6. Click **Randomize**.
-7. Load the produced `.bin` in your preferred PSX emulator.
+The GUI is a Python + PyQt6 application that lives in `gui_qt/`.
+Requires **Python 3.11+** (3.12 / 3.13 supported).
+
+From the repository root:
+
+```bash
+pip install -e ".[gui]"          # install the project + PyQt6
+python digimon_randomize_gui.py  # launch the window
+```
+
+In the window:
+
+1. Click **Browse...** on the ROM row and pick your clean `.bin`.
+2. Set an **Output** filename. The extension defaults to `.bin`.
+3. Tweak any of the four tabs (Digimon, Items, Progression, Misc. Patches).
+   Hover any control to read what it does.
+4. Click **Randomize**. The terminal panel at the bottom streams the
+   randomizer's progress live.
+5. Load the produced `.bin` in your preferred PSX emulator.
+
+Use **Save Settings** to write the current configuration to a `.json`
+file and **Load Settings** to restore it. The hash printed at the end
+of every run is the same value the `ShowHashIntro` patch can embed in
+the Jijimon intro screen for race verification.
+
+> The legacy Electron / TypeScript GUI under `gui/` has been retired.
+> The PyQt6 GUI produces the same settings JSON, so any settings files
+> saved by the old app load unchanged.
 
 ### Using the CLI (cross-platform)
 
-Requires **Python 3.11+** (3.12 / 3.13 supported).
+Requires **Python 3.11+** (3.12 / 3.13 supported). No third-party
+dependencies for the CLI; just install the project itself:
 
 ```bash
+pip install -e .
 python digimon_randomize.py -settings '<json-settings-string>'
 ```
 
 The `-settings` argument is the full JSON settings object. The GUI
-writes this file for you (`settings.ini`), but you can also generate or
-hand-write it, see [Settings file format](#settings-file-format).
+writes this file for you, but you can also generate or hand-write it,
+see [Settings file format](#settings-file-format).
 
 A minimal CLI run:
 
@@ -293,8 +316,9 @@ the same seed, so racers can't reuse a casual run to peek ahead. See
 
 ## Settings file format
 
-The Electron GUI writes and reads this JSON file. The schema is enforced
-by [`digimon/settings/schema.py`](digimon/settings/schema.py).
+The PyQt6 GUI writes and reads this JSON file (the legacy Electron GUI
+produced the same shape). The schema is enforced by
+[`digimon/settings/schema.py`](digimon/settings/schema.py).
 
 A minimal example:
 
@@ -363,6 +387,7 @@ The code follows SOLID + DRY with one concern per file. Key directories:
 ```
 digimon_world_randomizer/
 ├── digimon_randomize.py          # Thin CLI shim → digimon.app.run
+├── digimon_randomize_gui.py      # Thin GUI launcher → gui_qt.app.main
 ├── digimon/
 │   ├── app.py                    # Orchestrator: settings → state → randomise → patch → write
 │   ├── handler.py                # Facade kept for backward compat
@@ -380,14 +405,20 @@ digimon_world_randomizer/
 │   │   └── patches/              # One Strategy class per patch (Factory + Pipeline)
 │   ├── models/                   # Digimon / Item / Tech (depend on narrow Protocols)
 │   └── randomization/            # One Strategy class per randomiser + shared pickers
+├── gui_qt/                       # PyQt6 desktop GUI
+│   ├── app.py                    # Qt bootstrap (QApplication, MainWindow)
+│   ├── main_window.py            # Assembles header + tabs + terminal
+│   ├── worker.py                 # RandomizerWorker (QThread) for the Randomize button
+│   ├── settings_model.py         # Typed settings dataclasses + JSON round-trip + hash
+│   ├── section_config.py         # Static UI layout: tabs → sections → elements
+│   └── widgets/                  # Reusable widgets (element factory, sections, file picker, terminal, header bar, tab)
 ├── data/
 │   ├── digimon/                  # Enum-based digimon roster + helpers
 │   ├── technique/                # Enum-based tech catalogue
 │   └── item/                     # Item category enum + ID range helpers
 ├── log/logger.py                 # Three-tier verbosity logger
 ├── script/util.py                # Script byte-encoding utilities
-├── tests/                        # 69-test pytest/unittest suite
-└── gui/                          # Electron GUI (TypeScript)
+└── tests/                        # unittest suite (CLI + GUI; GUI tests skip without PyQt6)
 ```
 
 **Design patterns in play:**
@@ -412,7 +443,7 @@ digimon_world_randomizer/
 ### Requirements
 
 - Python **3.11+** (3.12 / 3.13 supported).
-- For the GUI: Node.js + npm.
+- For the GUI: PyQt6 (installed via `pip install -e ".[gui]"`).
 
 ### Run the test suite
 
@@ -420,7 +451,8 @@ digimon_world_randomizer/
 python -m unittest discover tests
 ```
 
-Expected: **69 tests passing**.
+The GUI tests skip automatically when PyQt6 is not installed, so the
+CLI-only environment still reports all green.
 
 ### Optional dev dependencies
 
@@ -434,8 +466,7 @@ pip install -r requirements-dev.txt   # pytest + mypy + ruff
 build.bat
 ```
 
-Produces `dist/digimon_randomizer.zip` containing the Electron GUI and a
-PyInstaller-bundled CLI executable.
+Produces a PyInstaller-bundled GUI + CLI executable under `dist/`.
 
 ### Adding a new patch
 
@@ -443,8 +474,9 @@ PyInstaller-bundled CLI executable.
    that inherits `Patch` and defines a unique `name` + an `apply` method.
 2. Add an instance of it to the `PATCHES` dict in
    `digimon/rom/patches/registry.py`.
-3. (If user-toggleable) add it to the GUI options in
-   `gui/src/constants.ts` and to the schema in
+3. (If user-toggleable) add an `ElementConfig` for it to
+   `gui_qt/section_config.py` (PATCHES_SECTION) and a field on
+   `PatchSettings` in `gui_qt/settings_model.py` + the schema in
    `digimon/settings/schema.py`.
 
 ### Adding a new randomiser
