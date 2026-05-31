@@ -66,6 +66,36 @@ class ApplyThemeTests(unittest.TestCase):
         apply_theme(self._app)
         self.assertGreater(len(self._app.styleSheet()), 0)
 
+    def test_stylesheet_covers_every_themed_widget_class(self):
+        from gui_qt.theme import apply_theme
+
+        apply_theme(self._app)
+        css = self._app.styleSheet()
+
+        # Each themed control should at least have a top-level selector.
+        for selector in (
+            "QPushButton",
+            "QLineEdit",
+            "QComboBox",
+            "QCheckBox",
+            "QRadioButton",
+            "QSlider",
+            "QToolTip",
+        ):
+            with self.subTest(selector=selector):
+                self.assertIn(selector, css)
+
+    def test_apply_theme_installs_the_ui_font(self):
+        from gui_qt.theme import UI_FONT_FAMILIES, UI_FONT_POINT_SIZE, apply_theme
+
+        apply_theme(self._app)
+        font = self._app.font()
+        # On systems without any of the preferred families installed Qt
+        # may substitute; checking the FIRST entry of the families list
+        # is what we control.
+        self.assertEqual(font.families()[0], UI_FONT_FAMILIES[0])
+        self.assertEqual(font.pointSize(), UI_FONT_POINT_SIZE)
+
 
 if __name__ == "__main__":
     unittest.main()

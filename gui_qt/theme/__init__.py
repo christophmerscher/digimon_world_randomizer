@@ -15,9 +15,34 @@ establishes the foundation (palette + Fusion + an empty stylesheet).
 from __future__ import annotations
 
 from gui_qt.theme.palette import DARK_PALETTE, Palette
+from gui_qt.theme.stylesheet import build_stylesheet
 
 
-__all__ = ["DARK_PALETTE", "Palette", "apply_theme", "build_palette"]
+# Font stack preferred for UI text. The first available family wins.
+# Picks a modern variable / humanist sans on each platform; falls back
+# to the platform default if none are installed.
+UI_FONT_FAMILIES = (
+    "Segoe UI Variable",   # Windows 11
+    "Segoe UI",            # Windows 10
+    "Inter",               # cross-platform modern open-source
+    "SF Pro Text",         # macOS Big Sur+
+    "Helvetica Neue",
+    "Roboto",
+    "Cantarell",           # GNOME
+    "Noto Sans",
+    "sans-serif",
+)
+
+UI_FONT_POINT_SIZE = 10
+
+
+__all__ = [
+    "DARK_PALETTE",
+    "Palette",
+    "apply_theme",
+    "build_palette",
+    "build_stylesheet",
+]
 
 
 def build_palette(palette: Palette):
@@ -56,20 +81,21 @@ def build_palette(palette: Palette):
     return qp
 
 
-def build_stylesheet(palette: Palette) -> str:
-    """Return the QSS body for the given palette.
+def build_ui_font():
+    """Return the modern UI :class:`QFont`.
 
-    The body grows over the next theme commits; for now it just sets
-    the global window/text colours so anything not yet themed picks
-    them up automatically.
+    Sets a fallback list so Windows 11, Windows 10, macOS, and major
+    Linux desktops all land on a humanist sans without shipping our
+    own font file.
     """
 
-    return f"""
-QWidget {{
-    background-color: {palette.background};
-    color: {palette.text};
-}}
-""".strip()
+    from PyQt6.QtGui import QFont
+
+    font = QFont()
+    font.setFamilies(list(UI_FONT_FAMILIES))
+    font.setPointSize(UI_FONT_POINT_SIZE)
+    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+    return font
 
 
 def apply_theme(app, palette: Palette = DARK_PALETTE) -> None:
@@ -79,4 +105,5 @@ def apply_theme(app, palette: Palette = DARK_PALETTE) -> None:
 
     app.setStyle(QStyleFactory.create("Fusion"))
     app.setPalette(build_palette(palette))
+    app.setFont(build_ui_font())
     app.setStyleSheet(build_stylesheet(palette))
