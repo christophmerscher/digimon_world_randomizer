@@ -1,300 +1,129 @@
 # Author: Tristan Challener <challenert@gmail.com>
 # Copyright: please don't steal this that is all
 
-"""
-Utilities for writing specific positions in memory.
+"""Script-text encoding / decoding + instruction compiler.
+
+The Digimon World engine stores in-game dialogue and event triggers
+as a small bytecode. This module ports just enough of that bytecode
+for the randomizer's needs:
+
+* :func:`encode` / :func:`decode` turn ASCII strings into the engine's
+  two-byte-per-character text format and back. Used by the recruitment
+  reader/writer to verify name placeholders and by the intro-hash
+  patch to inject the settings hash into Jijimon's dialogue.
+* :func:`compile` emits the raw bytes for a single instruction
+  (``jumpTo``, ``learnMove``, …). Used by the intro-skip patch.
+
+The opcode constants below mirror the values the engine treats as
+"start of <command>" markers; the reader/writer compare them to
+detect that they are looking at the right kind of script entry.
 """
 
-import digimon.data as data
+from __future__ import annotations
+
 import struct
-import mmap
-#import pyperclip
-
-setDialogOwner = 0x1B
-setTrigger     = 0x1C
-giveItem       = 0x28
-spawnItem      = 0x74
-learnMove      = 0x2D
-spawnChest     = 0x75
-jumpTo         = 0x16
 
 
-def findAll( script, bin, inst, valueList=None ):
-    """
-    Find all uses of the given instruction.
-    """
+# ---------------------------------------------------------------------------
+# Script opcodes (engine-defined)
+# ---------------------------------------------------------------------------
 
-    with open( script, 'r' ) as file:
-        out = []
-        buf = '\n'
-        while( buf != '' ):
-            buf = file.readline()
-            lineSplit = buf.split( ' ' )
-            if( len( lineSplit ) > 1 ):
-                if( lineSplit[1] == inst ):
-                    args = []
-                    for i in range( 2, len( lineSplit ) ):
-                        args.append( int( lineSplit[i] ) )
-                    if( valueList != None and ( args[0] not in valueList ) ):
-                        continue
-                    out.append( compile( inst, *args ) )
-
-    ofst = []
-    for seq in out:
-        ofst.append( findSequenceInFile( bin, seq )  )
-
-    if( len( out ) != len( ofst ) ):
-        print( 'Error: unable to find some of the ' + inst + ' in the file: ' + str( len( ofst ) ) + '/' + str( len( out ) ) )
-
-    strFormat = '(\n'
-
-    for ofsts in ofst:
-        strFormat += "(" + "".join("{:08X}, ".format(o) for o in ofsts) + "),\n"
-
-    strFormat += ')'
-
-    print( strFormat )
-    #pyperclip.copy( strFormat )
-
-    return ofst
+giveItem   = 0x28
+spawnItem  = 0x74
+learnMove  = 0x2D
+spawnChest = 0x75
+jumpTo     = 0x16
 
 
-def findAllDuplicatesForMapItemOffsets( filename ):
-    """
-    Find all offsets for duplicate recruitment data.
+# ---------------------------------------------------------------------------
+# Text encoding (two bytes per character; one byte per case bucket)
+# ---------------------------------------------------------------------------
+
+def encode(text: str) -> bytes:
+    """Encode an ASCII string in the engine's two-byte-per-char text format.
+
+    Supports the lowercase + uppercase Latin alphabets, digits, space,
+    and newline. Unsupported characters print an error and are skipped.
     """
 
-    all = []
-    for ofst in data.mapItemOffsets:
-        #print( 'investigating triggers for digimon: ' + str( id ) )
+    packed = b""
 
-        found = findAllDuplicatesOfDataAtOffset( filename, ofst, 20 )
-        all = list( set( found ) | set( all ) )
-        #print( 'found ' + str( len( found ) ) + ' copies' )
-
-    print( str( len( all ) ) + ': (' + ",".join(" 0x{:08X}".format( o ) for o in all ) + ' )' )
-
-
-def findAllDuplicatesForRecruitOffsets( filename ):
-    """
-    Find all offsets for duplicate recruitment data.
-    """
-
-    for ( triggers, val, id ) in data.recruitOffsets:
-        #print( 'investigating triggers for digimon: ' + str( id ) )
-        all = []
-        for ofst in triggers:
-            found = findAllDuplicatesOfDataAtOffset( filename, ofst, 20 )
-            all = list( set( found ) | set( all ) )
-            #print( 'found ' + str( len( found ) ) + ' copies' )
-
-        print( str( len( all ) ) + ': (' + ",".join(" 0x{:08X}".format( o ) for o in all ) + ' )' )
-
-
-def findAllDuplicatesOfDataAtOffset( filename, ofst, sz ):
-    """
-    Find all occurences of the data that occurs at a given offset
-    in the given file.  Match sz bytes.
-    """
-
-    with open( filename, 'r+b' ) as file:
-        file.seek( ofst, 0 )
-        seq = file.read( sz )
-
-    found = findSequenceInFile( filename, seq )
-
-    #out = '(' + ",".join( "0x{:08X}".format( o ) for o in found ) + ')'
-    #print( out )
-    #pyperclip.copy(out)
-    
-    return found
-
-
-def findSequenceInFile( filename, seq, ofst=None ):
-    """
-    Find the first occurence of the binary sequence in the file.
-    """
-
-    #print( 'Finding seq: ' + str( seq ) )
-
-    with open( filename, 'r+b' ) as file:
-        mm = mmap.mmap( file.fileno(), 0 )
-        found = []
-        if( ofst == None ):
-            res = data.scriptOffsetInBinary
+    for char in text:
+        if char in "abcdefghijklmnopqrstuvwxyz":
+            packed += struct.pack("<BB", 0x82, 0x81 + ord(char) - ord("a"))
+        elif char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+            packed += struct.pack("<BB", 0x82, 0x60 + ord(char) - ord("A"))
+        elif char in "0123456789":
+            packed += struct.pack("<BB", 0x82, 0x4F + int(char))
+        elif char == " ":
+            packed += struct.pack("<BB", 0x81, 0x40)
+        elif char == "\n":
+            packed += struct.pack("<BB", 0x0D, 0x00)
         else:
-            res = ofst
-        while( res != -1 and res < mm.size() ):
-            res =  mm.find( seq, res + len( seq ) )
-            if( res != -1 ):
-                found.append( res )
-
-    return found
-
-
-def encode( str ):
-    """
-    Encode string in script text format.  Currently only
-    supports alphanumeric strings. (plus " " and "\n" )
-
-    Keyword arguments:
-    str -- String to encode
-    """
-
-    packed = b''
-
-    for c in str:
-        if( c in 'abcdefghijklmnopqrstuvwxyz' ):
-            packed += struct.pack(
-                                '<BB',
-                                0x82,
-                                0x81 + ord( c ) - ord( 'a' )
-                                )
-        elif( c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' ):
-            packed += struct.pack(
-                                '<BB',
-                                0x82,
-                                0x60 + ord( c ) - ord( 'A' )
-                                )
-        elif( c in "0123456789" ):
-            packed += struct.pack(
-                                '<BB',
-                                0x82,
-                                0x4F + int( c )
-            )
-        elif( c in ' ' ):
-            packed += struct.pack(
-                                '<BB',
-                                0x81,
-                                0x40
-                                )
-        elif( c in '\n' ):
-            packed += struct.pack(
-                                '<BB',
-                                0x0D,
-                                0x00
-                                )
-
-        else:
-            print( 'Error: trying to encode unsupported character' )
-
-    #print( "".join("{:02x}".format(ord(c)) for c in packed) )
-    #print('Copied:'  + '\'' + out  + '\'' + ' to the cipboard')
-    #pyperclip.copy(out)
+            print("Error: trying to encode unsupported character")
 
     return packed
 
 
-def decode( str ):
+def decode(data: bytes) -> str:
+    """Inverse of :func:`encode` — recover an ASCII string.
+
+    Reads every second byte (the case-bucket selector + offset combined)
+    and walks the same case ranges in reverse. Only alphanumeric +
+    space + newline characters are recognised.
     """
-    Decode string in script text format.  Currently only
-    supports all-alpha strings.
 
-    Keyword arguments:
-    str -- String to decode
-    """
+    out = ""
 
-    out = ''
+    for byte in data[1::2]:
+        if not isinstance(byte, int):
+            byte = ord(byte)
 
-    for c in str[1::2]:
-        if( type( c ) != int ):
-            c = ord( c )
-        if( c > 0 ):
-            if( c >= 0x40 ):  # >= 0x40
-                c = c - 0x40
-                if( c >= 0x0F): # >= 0x4F
-                    c = c - 0x0F
-                    if( c >= 0x11 ): # >= 0x60
-                        c = c - 0x11
-                        if( c >= 0x21 ): # >= 0x81
-                            c = c - 0x21
-                            out += 'abcdefghijklmnopqrstuvwxyz'[ c ]
-                        else:
-                            out += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[ c ]
-                    else:
-                        out += '0123456789'[c]
-                else:
-                    out += ' '
-            else:
-                print( 'Error: trying to encode unsupported character' )
-        else:
-            out += '\n'
+        if byte == 0:
+            out += "\n"
+            continue
+
+        if byte < 0x40:
+            print("Error: trying to encode unsupported character")
+            continue
+
+        offset = byte - 0x40
+        if offset < 0x0F:
+            out += " "
+            continue
+
+        offset -= 0x0F
+        if offset < 0x11:
+            out += "0123456789"[offset]
+            continue
+
+        offset -= 0x11
+        if offset < 0x21:
+            out += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[offset]
+            continue
+
+        offset -= 0x21
+        out += "abcdefghijklmnopqrstuvwxyz"[offset]
 
     return out
 
 
-def compile( inst, *args ):
-    """
-    Convert specified script instruction and args
-    into hex instruction.
+# ---------------------------------------------------------------------------
+# Instruction compiler (used by patches)
+# ---------------------------------------------------------------------------
 
-    Keyword arguments:
-    inst -- Script instruction code.
-    args -- Variable length argument list for instruction.
-    """
+def compile(inst: str, *args) -> bytes:
+    """Pack a single script instruction into its raw byte form."""
 
-    if( inst == 'spawnChest' ):
-        packed = struct.pack(
-                            '<BBhhhhh',
-                            spawnChest,
-                            args[0],
-                            args[1],
-                            args[2],
-                            args[3],
-                            args[4],
-                            args[5]
-                            )
-    elif( inst == 'giveItem' ):
-        packed = struct.pack(
-                            '<BBBB',
-                            giveItem,
-                            0x00,
-                            args[0],
-                            args[1]
-                            )
-    elif( inst == 'spawnItem' ):
-        packed = struct.pack(
-                            '<BBhh',
-                            spawnItem,
-                            args[0],
-                            args[1],
-                            args[2]
-                            )
-    elif( inst == 'learnMove' ):
-        packed = struct.pack(
-                            '<BB',
-                            learnMove,
-                            args[0]
-                            )
-    elif( inst == 'move' ):
-        packed = struct.pack(
-                            '<BB',
-                            learnMove,
-                            args[0]
-                            )
-    elif( inst == 'setDialogOwner' ):
-        packed = struct.pack(
-                            '<BB',
-                            setDialogOwner,
-                            args[0]
-                            )
-    elif( inst == 'setTrigger' ):
-        packed = struct.pack(
-                            '<BxH',
-                            setTrigger,
-                            args[0]
-                            )
-    elif( inst == 'jumpTo' ):
-        packed = struct.pack(
-                            '<BxH',
-                            jumpTo,
-                            args[0]
-                            )
+    if inst == "spawnChest":
+        return struct.pack("<BBhhhhh", spawnChest, *args[:6])
+    if inst == "giveItem":
+        return struct.pack("<BBBB", giveItem, 0x00, args[0], args[1])
+    if inst == "spawnItem":
+        return struct.pack("<BBhh", spawnItem, args[0], args[1], args[2])
+    if inst in ("learnMove", "move"):
+        return struct.pack("<BB", learnMove, args[0])
+    if inst == "jumpTo":
+        return struct.pack("<BxH", jumpTo, args[0])
 
-
-
-    #out =  "".join("{:02x}".format(ord(c)) for c in packed)
-    #print('Copied:'  + '\'' + out  + '\'' + ' to the cipboard')
-    #pyperclip.copy(out)
-
-    return ( packed )
+    raise ValueError(f"Unknown script instruction: {inst!r}")
