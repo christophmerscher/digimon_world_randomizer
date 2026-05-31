@@ -2,9 +2,9 @@
 
 """Qt application bootstrap.
 
-Opens the main window. Kept tiny on purpose; all UI assembly happens in
-later commits inside :mod:`gui_qt.main_window` and the per-widget
-modules under :mod:`gui_qt.widgets`.
+Opens the main window. Kept tiny on purpose; UI assembly lives in
+:mod:`gui_qt.main_window` and the per-widget modules under
+:mod:`gui_qt.widgets`.
 
 The PyQt6 import is performed inside :func:`main` so the rest of the
 ``gui_qt`` package can be imported (for tests, type-checking) on systems
@@ -16,18 +16,11 @@ from __future__ import annotations
 import sys
 
 
-APP_TITLE = "Digimon World Randomizer"
-
-# Initial window size matches the legacy Electron BrowserWindow.
-WINDOW_WIDTH = 600
-WINDOW_HEIGHT = 730
-
-
 def main(argv: list[str] | None = None) -> int:
     """Launch the Qt event loop and return its exit code."""
 
     try:
-        from PyQt6.QtWidgets import QApplication, QMainWindow
+        from PyQt6.QtWidgets import QApplication
     except ImportError as exc:
         print(
             "PyQt6 is required to launch the GUI. Install it with:\n"
@@ -38,12 +31,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         raise SystemExit(2) from exc
 
+    # Defer the import so the bare ``gui_qt`` package stays Qt-free.
+    from gui_qt.main_window import MainWindow
+
     qt_argv = argv if argv is not None else sys.argv
     qt_app = QApplication(qt_argv)
 
-    window = QMainWindow()
-    window.setWindowTitle(APP_TITLE)
-    window.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
+    window = MainWindow()
     window.show()
 
     return qt_app.exec()
