@@ -32,6 +32,7 @@ from typing import Any
 import digimon.data as data
 import digimon.patch_registry as patch_registry
 import digimon.util as util
+from data.digimon import PerfectDigimon
 from digimon.models import Digimon, Item, Tech
 from digimon.seeding import SeedingPolicy
 from digimon.randomization import (
@@ -220,12 +221,20 @@ class DigimonWorldHandler:
     # Name / roster lookups (used by models, randomisers, patches, tests)
     # ------------------------------------------------------------------
 
+    # Names of Ultimate digimon that don't have natural digivolution
+    # requirements; the evolution randomiser refuses to assign them as
+    # a target unless ``excludeSpecials`` is explicitly turned off.
+    _SPECIAL_ULTIMATE_NAMES = frozenset((
+        PerfectDigimon.PANJYAMON.display_name,
+        PerfectDigimon.GIGADRAMON.display_name,
+        PerfectDigimon.METALETEMON.display_name,
+    ))
+
     def getPlayableDigimonByLevel(self, level: int, excludeSpecials: bool = False) -> list[Digimon]:
-        excluded_specials = {"Panjyamon", "Gigadramon", "MetalEtemon"}
         result: list[Digimon] = []
         for digi in self.digimonData:
             if digi.level == level and digi.id in digi.playableDigimon:
-                if excludeSpecials and digi.name in excluded_specials:
+                if excludeSpecials and digi.name in self._SPECIAL_ULTIMATE_NAMES:
                     continue
                 result.append(digi)
         return result

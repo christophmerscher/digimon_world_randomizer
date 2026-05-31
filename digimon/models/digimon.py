@@ -18,6 +18,12 @@ from __future__ import annotations
 from typing import Sequence
 
 import digimon.data as data
+from data.digimon import (
+    ChampionDigimon,
+    PerfectDigimon,
+    RookieDigimon,
+    all_partner_digimon,
+)
 from digimon.models.lookups import ModelContext
 
 
@@ -43,16 +49,40 @@ EVO_FLAG_MAX_CARE_MISTAKES  = 0x0010
 
 
 # Names whose Champion entries form Factorial Town's recruit chain; used
-# elsewhere to validate randomised recruitments.
-NUMEMON_FAMILY_NAMES = frozenset(("Numemon", "Sukamon", "Nanimon"))
+# in the PP rule below to clamp those three digimon to 1 PP regardless
+# of level.
+NUMEMON_FAMILY_NAMES = frozenset((
+    ChampionDigimon.NUMEMON.display_name,
+    ChampionDigimon.SUKAMON.display_name,
+    ChampionDigimon.NANIMON.display_name,
+))
+
+# Names that the evolution randomiser must never pick as an evo target
+# because they have no standard digivolution requirements.
+_ALWAYS_INVALID_EVO_TARGETS = frozenset((
+    RookieDigimon.KUNEMON.display_name,
+    ChampionDigimon.NUMEMON.display_name,
+    ChampionDigimon.SUKAMON.display_name,
+    ChampionDigimon.NANIMON.display_name,
+    PerfectDigimon.VADEMON.display_name,
+    PerfectDigimon.PANJYAMON.display_name,
+    PerfectDigimon.GIGADRAMON.display_name,
+    PerfectDigimon.METALETEMON.display_name,
+))
+
+# Devimon is the one extra exclusion that only applies when the
+# evolution-requirements randomiser hasn't run yet.
+_DEVIMON_NAME = ChampionDigimon.DEVIMON.display_name
 
 
 class Digimon:
     """In-memory representation of a single digimon stat-block record."""
 
-    # Partner IDs that correspond to actual playable digimon. (IDs above
-    # ``lastPartnerDigimon`` belong to enemy NPCs read from the same block.)
-    playableDigimon = list(range(0x01, 0x3E)) + [0x3F, 0x40, 0x41]
+    # Partner IDs that correspond to actual playable digimon. Derived from
+    # the data/ enums so adding a new partner needs only one edit (the
+    # enum) instead of a magic range here as well. IDs not present in the
+    # enums belong to enemy / NPC digimon read from the same stat block.
+    playableDigimon: list[int] = sorted({member.id for member in all_partner_digimon()})
 
     def __init__(self, handler: ModelContext, id: int, readData: Sequence) -> None:
         """Unpack one row of the digimon stat block into an object.
@@ -347,16 +377,11 @@ class Digimon:
 
         validEvos = self.handler.getPlayableDigimonByLevel(self.level + 1)
 
-        # These digimon have no standard evolution requirements at all and
-        # therefore cannot be assigned as a randomised evolution target.
-        alwaysInvalid = [
-            "Kunemon", "Numemon", "Sukamon", "Nanimon", "Vademon",
-            "Panjyamon", "Gigadramon", "MetalEtemon",
-        ]
+        invalid_names = set(_ALWAYS_INVALID_EVO_TARGETS)
         if not self.handler.randomizedRequirements:
-            alwaysInvalid.append("Devimon")
+            invalid_names.add(_DEVIMON_NAME)
 
-        return [evo for evo in validEvos if evo.name not in alwaysInvalid]
+        return [evo for evo in validEvos if evo.name not in invalid_names]
 
     def addEvoTo(self, id: int) -> None:
         """Insert an evolution target into the next free ``toEvo`` slot."""
