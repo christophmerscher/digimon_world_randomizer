@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import random
 
+from data.technique import TechniqueEffect
 from digimon.randomization.base import Randomizer, RandomizationContext
 from digimon.randomization.pickers import RandomTechPicker
 
@@ -23,6 +24,23 @@ MAX_MP        = 255
 # Probability (out of 100) that the effect roll yields a real effect.
 EFFECT_NOEFFECT_THRESHOLD = 1   # random.randint(0, 1) > 0  → ~50%
 MAX_EFFECT_CHANCE         = 70
+
+# Effect byte the engine uses to mean "no effect at all". Derived from
+# the TechniqueEffect enum so the magic 0 disappears from the inline
+# logic below.
+_NO_EFFECT_BYTE = int(TechniqueEffect.NONE.value, 16)
+
+# Pool the random-effect roll draws from. The four real status effects
+# in the order their byte values appear (POISON=1, CONFUSE=2, STUN=3,
+# FLAT=4) — this ordering makes the roll byte-identical to the legacy
+# ``random.randint(1, 4)`` call (both consume one _randbelow(4) draw
+# and the indices line up with the byte values).
+_RANDOM_EFFECT_POOL = (
+    TechniqueEffect.POISON,
+    TechniqueEffect.CONFUSE,
+    TechniqueEffect.STUN,
+    TechniqueEffect.FLAT,
+)
 
 
 class TechDataRandomizer(Randomizer):
@@ -85,13 +103,14 @@ class TechDataRandomizer(Randomizer):
 
         if self.effect:
             if random.randint(0, 1) > 0 and self.power != 0:
-                tech.effect = random.randint(1, 4)
+                chosen = random.choice(_RANDOM_EFFECT_POOL)
+                tech.effect = int(chosen.value, 16)
             else:
-                tech.effect    = 0
+                tech.effect    = _NO_EFFECT_BYTE
                 tech.effChance = 0
 
         if self.effect_chance:
-            if tech.effect == 0:
+            if tech.effect == _NO_EFFECT_BYTE:
                 tech.effChance = 0
             else:
                 tech.effChance = random.randint(1, MAX_EFFECT_CHANCE)
