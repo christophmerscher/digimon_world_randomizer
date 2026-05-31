@@ -73,9 +73,11 @@ class MainWindow(QMainWindow):
     def _build_central_widget(self) -> QWidget:
         central = QWidget(self)
         layout = QVBoxLayout(central)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(14)
         layout.addWidget(self._header)
-        layout.addWidget(self._tabs, 1)        # tabs expand to fill space
-        layout.addWidget(self._terminal, 1)    # terminal takes the rest
+        layout.addWidget(self._tabs, 2)        # tabs take ~2/3 of the height
+        layout.addWidget(self._terminal, 1)    # terminal takes ~1/3
         return central
 
     def _build_tabs(self) -> QTabWidget:

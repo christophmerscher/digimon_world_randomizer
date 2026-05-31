@@ -75,6 +75,7 @@ class ApplyThemeTests(unittest.TestCase):
         # Each themed control should at least have a top-level selector.
         for selector in (
             "QPushButton",
+            "QPushButton#primaryButton",
             "QLineEdit",
             "QComboBox",
             "QCheckBox",
@@ -86,6 +87,7 @@ class ApplyThemeTests(unittest.TestCase):
             "QTabBar",
             "QPlainTextEdit",
             "QScrollArea",
+            "QScrollBar",
         ):
             with self.subTest(selector=selector):
                 self.assertIn(selector, css)

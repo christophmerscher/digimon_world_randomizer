@@ -29,6 +29,7 @@ def build_stylesheet(palette: Palette) -> str:
     return "\n".join((
         _base(palette),
         _buttons(palette),
+        _accent_button(palette),
         _line_edit(palette),
         _combo_box(palette),
         _checkbox(palette),
@@ -37,6 +38,7 @@ def build_stylesheet(palette: Palette) -> str:
         _group_box(palette),
         _tab_widget(palette),
         _terminal(palette),
+        _scrollbars(palette),
     )).strip()
 
 
@@ -103,6 +105,40 @@ QPushButton:disabled {{
     color: {p.text_muted};
     border-color: {p.border};
     background-color: {p.surface};
+}}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Primary / accent button (Randomize)
+# ---------------------------------------------------------------------------
+
+def _accent_button(p: Palette) -> str:
+    return f"""
+/* --- Accent button -------------------------------------------------- */
+
+QPushButton#primaryButton {{
+    background-color: {p.accent};
+    color: {p.accent_text};
+    border: 1px solid {p.accent};
+    font-weight: 600;
+    padding: 8px 18px;
+}}
+
+QPushButton#primaryButton:hover {{
+    background-color: {p.accent_hover};
+    border-color: {p.accent_hover};
+}}
+
+QPushButton#primaryButton:pressed {{
+    background-color: {p.accent_pressed};
+    border-color: {p.accent_pressed};
+}}
+
+QPushButton#primaryButton:disabled {{
+    background-color: {p.surface};
+    color: {p.text_muted};
+    border-color: {p.border};
 }}
 """
 
@@ -422,6 +458,57 @@ QPlainTextEdit:focus {{
    its parent — no inset border. */
 QScrollArea {{
     border: none;
+    background: transparent;
+}}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Scrollbars (thin, no chrome)
+# ---------------------------------------------------------------------------
+
+def _scrollbars(p: Palette) -> str:
+    return f"""
+/* --- Scrollbars ----------------------------------------------------- */
+
+QScrollBar:vertical {{
+    background: transparent;
+    width: 10px;
+    margin: 4px 2px;
+    border: none;
+}}
+
+QScrollBar:horizontal {{
+    background: transparent;
+    height: 10px;
+    margin: 2px 4px;
+    border: none;
+}}
+
+QScrollBar::handle:vertical,
+QScrollBar::handle:horizontal {{
+    background: {p.border_strong};
+    border-radius: 4px;
+    min-height: 24px;
+    min-width: 24px;
+}}
+
+QScrollBar::handle:vertical:hover,
+QScrollBar::handle:horizontal:hover {{
+    background: {p.text_muted};
+}}
+
+/* Hide the line / page buttons entirely — pure handle, no arrows. */
+QScrollBar::add-line,
+QScrollBar::sub-line {{
+    background: none;
+    border: none;
+    width: 0;
+    height: 0;
+}}
+
+QScrollBar::add-page,
+QScrollBar::sub-page {{
     background: transparent;
 }}
 """
