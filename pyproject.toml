@@ -24,17 +24,26 @@ classifiers = [
 ]
 dependencies = []
 
+[project.optional-dependencies]
+gui = ["PyQt6>=6.6"]
+
 [project.scripts]
 digimon-randomize = "digimon_randomize:main"
+digimon-randomize-gui = "digimon_randomize_gui:main"
 
 [tool.setuptools]
 packages = [
     "digimon",
     "digimon.models",
+    "digimon.randomization",
     "digimon.rom",
+    "digimon.rom.patches",
+    "digimon.settings",
     "data",
     "data.digimon",
+    "data.item",
     "data.technique",
+    "gui_qt",
     "log",
     "script",
 ]
