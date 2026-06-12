@@ -1,3 +1,5 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 """Read every supported data block out of a Digimon World ROM image.
 
 The reader is the only place that turns raw PSX bytes into the typed
@@ -13,8 +15,9 @@ from typing import BinaryIO
 
 import digimon.data as data
 from digimon.models import Digimon, Item, ModelContext, Tech
-from digimon.rom import blocks, script_offsets
 from digimon.rom.file import RomFile
+from digimon.rom.layouts import DataBlockLayout, NTSC_U_LAYOUT, RomLayout
+from digimon.rom.script_layouts import ScriptLayout
 from digimon.rom.state import RomState
 from digimon.rom.struct_codec import (
     read_block_with_exclusions,
@@ -26,9 +29,39 @@ import script.util as scrutil
 class RomReader:
     """Populate a fresh :class:`RomState` from a ROM file image."""
 
-    def __init__(self, lookup: ModelContext, logger) -> None:
+    def __init__(
+        self,
+        lookup: ModelContext,
+        logger,
+        layout: RomLayout = NTSC_U_LAYOUT,
+    ) -> None:
         self._lookup = lookup
         self._logger = logger
+        self._layout = layout
+
+    @property
+    def _scripts(self) -> ScriptLayout:
+        return self._layout.require_scripts()
+
+    def _block(self, name: str) -> DataBlockLayout:
+        return self._layout.require_block(name)
+
+    def _read_block(self, handle: BinaryIO, name: str) -> bytes:
+        block = self._block(name)
+        return read_block_with_exclusions(
+            handle,
+            block.offset,
+            block.size,
+            block.exclusion_offsets,
+            block.exclusion_size,
+        )
+
+    def _unpack_block(self, handle: BinaryIO, name: str) -> list[tuple]:
+        block = self._block(name)
+        if block.count is None:
+            raise ValueError(f"{name!r} is a raw block and cannot be unpacked.")
+
+        return unpack_array(self._read_block(handle, name), block.format, block.count)
 
     # ------------------------------------------------------------------
     def read(self, rom: RomFile) -> RomState:
@@ -61,12 +94,7 @@ class RomReader:
     def _read_techs(self, handle: BinaryIO, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Tech Data"))
 
-        raw = read_block_with_exclusions(
-            handle,
-            blocks.techDataBlockOffset, blocks.techDataBlockSize,
-            blocks.techDataExclusionOffsets, blocks.techDataExclusionSize,
-        )
-        records = unpack_array(raw, blocks.techDataFormat, blocks.techDataBlockCount)
+        records = self._unpack_block(handle, "techData")
 
         for i, record in enumerate(records):
             tech = Tech(self._lookup, i, record)
@@ -74,12 +102,7 @@ class RomReader:
             state.techData.append(tech)
 
     def _read_tech_tier_list(self, handle: BinaryIO, state: RomState) -> None:
-        raw = read_block_with_exclusions(
-            handle,
-            blocks.techTierListBlockOffset, blocks.techTierListBlockSize,
-            blocks.techTierListExclusionOffsets, blocks.techTierListExclusionSize,
-        )
-        records = unpack_array(raw, blocks.techTierListFormat, blocks.techTierListBlockCount)
+        records = self._unpack_block(handle, "techTierList")
 
         # Each tier-list row is (id_at_slot_1, id_at_slot_2, …); the slot
         # index plus one is the tier value assigned to that tech.
@@ -88,12 +111,7 @@ class RomReader:
                 state.techData[tech_id].tier = slot_index + 1
 
     def _read_tech_battle_learn(self, handle: BinaryIO, state: RomState) -> None:
-        raw = read_block_with_exclusions(
-            handle,
-            blocks.techLearnBlockOffset, blocks.techLearnBlockSize,
-            blocks.techLearnExclusionOffsets, blocks.techLearnExclusionSize,
-        )
-        records = unpack_array(raw, blocks.techLearnFormat, blocks.techLearnBlockCount)
+        records = self._unpack_block(handle, "techLearn")
 
         for tech_id, record in enumerate(records):
             state.techData[tech_id].learnChance = list(record)
@@ -102,12 +120,7 @@ class RomReader:
             self._logger.log(str(tech))
 
     def _read_tech_brain_learn(self, handle: BinaryIO, state: RomState) -> None:
-        raw = read_block_with_exclusions(
-            handle,
-            blocks.techBrainBlockOffset, blocks.techBrainBlockSize,
-            blocks.techBrainExclusionOffsets, blocks.techBrainExclusionSize,
-        )
-        records = unpack_array(raw, blocks.techLearnFormat, blocks.techBrainBlockCount)
+        records = self._unpack_block(handle, "techBrain")
 
         # Index = tier, value = per-specialty learn chance tuple.
         state.brainLearn = [list(record) for record in records]
@@ -122,12 +135,7 @@ class RomReader:
     def _read_items(self, handle: BinaryIO, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Item Data"))
 
-        raw = read_block_with_exclusions(
-            handle,
-            blocks.itemDataBlockOffset, blocks.itemDataBlockSize,
-            blocks.itemDataExclusionOffsets, blocks.itemDataExclusionSize,
-        )
-        records = unpack_array(raw, blocks.itemDataFormat, blocks.itemDataBlockCount)
+        records = self._unpack_block(handle, "itemData")
 
         for i, record in enumerate(records):
             item = Item(self._lookup, i, record)
@@ -145,12 +153,7 @@ class RomReader:
     def _read_digimon(self, handle: BinaryIO, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Digimon Data"))
 
-        raw = read_block_with_exclusions(
-            handle,
-            blocks.digimonDataBlockOffset, blocks.digimonDataBlockSize,
-            blocks.digimonDataExclusionOffsets, blocks.digimonDataExclusionSize,
-        )
-        records = unpack_array(raw, blocks.digimonDataFormat, blocks.digimonDataBlockCount)
+        records = self._unpack_block(handle, "digimonData")
 
         for i, record in enumerate(records):
             digi = Digimon(self._lookup, i, record)
@@ -163,12 +166,7 @@ class RomReader:
     def _read_evolutions(self, handle: BinaryIO, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Evolution Data"))
 
-        raw = read_block_with_exclusions(
-            handle,
-            blocks.evoToFromBlockOffset, blocks.evoToFromBlockSize,
-            blocks.evoToFromExclusionOffsets, blocks.evoToFromExclusionSize,
-        )
-        records = unpack_array(raw, blocks.evoToFromFormat, blocks.evoToFromBlockCount)
+        records = self._unpack_block(handle, "evoToFrom")
 
         # Player (ID 0) has no evo entries, so this block starts at id 1.
         for i, record in enumerate(records):
@@ -178,12 +176,7 @@ class RomReader:
     def _read_evolution_stats(self, handle: BinaryIO, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Evolution Stat Gain Data"))
 
-        raw = read_block_with_exclusions(
-            handle,
-            blocks.evoStatsBlockOffset, blocks.evoStatsBlockSize,
-            blocks.evoStatsExclusionOffsets, blocks.evoStatsExclusionSize,
-        )
-        records = unpack_array(raw, blocks.evoStatsFormat, blocks.evoStatsBlockCount)
+        records = self._unpack_block(handle, "evoStats")
 
         for i, record in enumerate(records):
             state.digimonData[i].setEvoStats(record)
@@ -192,12 +185,7 @@ class RomReader:
     def _read_evolution_requirements(self, handle: BinaryIO, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Evolution Requirements Data"))
 
-        raw = read_block_with_exclusions(
-            handle,
-            blocks.evoReqsBlockOffset, blocks.evoReqsBlockSize,
-            blocks.evoReqsExclusionOffsets, blocks.evoReqsExclusionSize,
-        )
-        records = unpack_array(raw, blocks.evoReqsFormat, blocks.evoReqsBlockCount)
+        records = self._unpack_block(handle, "evoReqs")
 
         for i, record in enumerate(records):
             state.digimonData[i].setEvoReqs(record)
@@ -212,17 +200,17 @@ class RomReader:
         from digimon.util import animIDTechSlot  # local import keeps phase boundary clear
 
         for i in (0, 1):
-            handle.seek(script_offsets.starterSetDigimonOffset[i], 0)
+            handle.seek(self._scripts.starterSetDigimonOffset[i], 0)
             digimon_id = struct.unpack(data.digimonIDFormat, handle.read(1))[0]
             state.starterID.append(digimon_id)
             self._logger.log(state.digimonData[digimon_id].name)
 
-            handle.seek(script_offsets.starterLearnTechOffset[i], 0)
+            handle.seek(self._scripts.starterLearnTechOffset[i], 0)
             tech_id = struct.unpack(data.techIDFormat, handle.read(1))[0]
             state.starterTech.append(tech_id)
             self._logger.log("0x" + format(tech_id, "02x") + " = tech ID")
 
-            handle.seek(script_offsets.starterEquipAnimOffset[i], 0)
+            handle.seek(self._scripts.starterEquipAnimOffset[i], 0)
             anim_id = struct.unpack(data.animIDFormat, handle.read(1))[0]
             slot = animIDTechSlot(anim_id)
             state.starterTechSlot.append(slot)
@@ -235,13 +223,13 @@ class RomReader:
         self._logger.log(self._logger.getHeader("Read Recruitment Data"))
 
         err = False
-        for (trigger_offsets, name_offsets, trigger_byte, digimon_id) in script_offsets.recruitOffsets:
+        for (trigger_offsets, name_offsets, trigger_byte, digimon_id) in self._scripts.recruitOffsets:
             verified_offsets = []
             for ofst in trigger_offsets:
                 handle.seek(ofst, 0)
                 value = struct.unpack(
-                    script_offsets.recruitFormat,
-                    handle.read(struct.calcsize(script_offsets.recruitFormat)),
+                    self._scripts.recruitFormat,
+                    handle.read(struct.calcsize(self._scripts.recruitFormat)),
                 )[0]
                 if value != trigger_byte:
                     self._logger.logError(
@@ -277,12 +265,12 @@ class RomReader:
         self._logger.log(self._logger.getHeader("Read Special Evolution Data"))
 
         err = False
-        for offsets, check_val, from_val in script_offsets.specEvoOffsets:
+        for offsets, check_val, from_val in self._scripts.specEvoOffsets:
             for ofst in offsets:
                 handle.seek(ofst, 0)
                 actual = struct.unpack(
-                    script_offsets.specEvoFormat,
-                    handle.read(struct.calcsize(script_offsets.specEvoFormat)),
+                    self._scripts.specEvoFormat,
+                    handle.read(struct.calcsize(self._scripts.specEvoFormat)),
                 )[0]
                 if actual != check_val:
                     self._logger.logError(
@@ -302,11 +290,11 @@ class RomReader:
     def _read_chest_items(self, handle: BinaryIO, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Chest Item Data"))
 
-        for ofst in script_offsets.chestItemOffsets:
+        for ofst in self._scripts.chestItemOffsets:
             handle.seek(ofst, 0)
             cmd, item_id = struct.unpack(
-                script_offsets.chestItemFormat,
-                handle.read(struct.calcsize(script_offsets.chestItemFormat)),
+                self._scripts.chestItemFormat,
+                handle.read(struct.calcsize(self._scripts.chestItemFormat)),
             )
             if cmd != scrutil.spawnChest:
                 self._logger.logError(
@@ -322,11 +310,11 @@ class RomReader:
     def _read_map_items(self, handle: BinaryIO, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Map Item Data"))
 
-        for ofst in script_offsets.mapItemOffsets:
+        for ofst in self._scripts.mapItemOffsets:
             handle.seek(ofst, 0)
             cmd, item_id = struct.unpack(
-                script_offsets.mapItemFormat,
-                handle.read(struct.calcsize(script_offsets.mapItemFormat)),
+                self._scripts.mapItemFormat,
+                handle.read(struct.calcsize(self._scripts.mapItemFormat)),
             )
             if cmd != scrutil.spawnItem:
                 self._logger.logError(
@@ -340,11 +328,11 @@ class RomReader:
     def _read_tokomon_items(self, handle: BinaryIO, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Tokomon Item Data"))
 
-        for ofst in script_offsets.tokoItemOffsets:
+        for ofst in self._scripts.tokoItemOffsets:
             handle.seek(ofst, 0)
             cmd, item_id, count = struct.unpack(
-                script_offsets.tokoItemFormat,
-                handle.read(struct.calcsize(script_offsets.tokoItemFormat)),
+                self._scripts.tokoItemFormat,
+                handle.read(struct.calcsize(self._scripts.tokoItemFormat)),
             )
             if cmd != scrutil.giveItem:
                 self._logger.logError(
@@ -363,11 +351,11 @@ class RomReader:
     def _read_tech_gifts(self, handle: BinaryIO, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Tech Gift Data"))
 
-        for i, ofst in enumerate(script_offsets.learnMoveOffsets):
+        for i, ofst in enumerate(self._scripts.learnMoveOffsets):
             handle.seek(ofst, 0)
             cmd, tech_id = struct.unpack(
-                script_offsets.learnMoveFormat,
-                handle.read(struct.calcsize(script_offsets.learnMoveFormat)),
+                self._scripts.learnMoveFormat,
+                handle.read(struct.calcsize(self._scripts.learnMoveFormat)),
             )
             if cmd != scrutil.learnMove:
                 self._logger.logError(
@@ -375,7 +363,7 @@ class RomReader:
                     + str(cmd) + " @ " + format(ofst, "08x")
                 )
             else:
-                state.techGifts[(ofst, script_offsets.checkMoveOffsets[i])] = tech_id
+                state.techGifts[(ofst, self._scripts.checkMoveOffsets[i])] = tech_id
 
         for tech_id in state.techGifts.values():
             tech_name = state.techData[tech_id].name if tech_id < len(state.techData) else "None"
@@ -385,8 +373,4 @@ class RomReader:
     # Jukebox
     # ------------------------------------------------------------------
     def _read_jukebox_track_names(self, handle: BinaryIO, state: RomState) -> None:
-        state.trackNames = read_block_with_exclusions(
-            handle,
-            blocks.trackNameBlockOffset, blocks.trackNameBlockSize,
-            blocks.trackNameExclusionOffsets, blocks.trackNameExclusionSize,
-        )
+        state.trackNames = self._read_block(handle, "trackName")

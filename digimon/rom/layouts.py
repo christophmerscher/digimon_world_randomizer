@@ -15,6 +15,7 @@ from typing import Mapping
 
 from digimon.rom import blocks, patch_data
 from digimon.rom.region import RomRegion, RomRegionInfo
+from digimon.rom.script_layouts import NTSC_U_SCRIPT_LAYOUT, ScriptLayout
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class RomLayout:
     serials: tuple[str, ...]
     complete: bool
     blocks: Mapping[str, DataBlockLayout]
+    scripts: ScriptLayout | None = None
     patch_offsets: Mapping[str, int] = field(default_factory=dict)
     unmapped: tuple[str, ...] = ()
 
@@ -53,6 +55,16 @@ class RomLayout:
             raise IncompleteLayoutError(
                 f"{self.display_name} does not have a verified mapping for {name!r} yet."
             ) from exc
+
+    def require_scripts(self) -> ScriptLayout:
+        """Return the mapped script layout or explain what is still missing."""
+
+        if self.scripts is None:
+            raise IncompleteLayoutError(
+                f"{self.display_name} does not have verified script offsets yet."
+            )
+
+        return self.scripts
 
 
 class IncompleteLayoutError(Exception):
@@ -136,6 +148,7 @@ NTSC_U_LAYOUT = RomLayout(
             blocks.trackNameExclusionOffsets, blocks.trackNameExclusionSize,
         ),
     },
+    scripts=NTSC_U_SCRIPT_LAYOUT,
     patch_offsets={
         "typeEffectivenessOffset": patch_data.typeEffectivenessOffset,
     },
@@ -158,6 +171,16 @@ PAL_DE_LAYOUT = RomLayout(
             0xAE, blocks.techLearnBlockCount,
             (), blocks.techLearnExclusionSize,
         ),
+        "techBrain": _block(
+            "techBrain", blocks.techBrainFormat, 0x157AA704,
+            blocks.techBrainBlockSize, blocks.techBrainBlockCount,
+            (), blocks.techBrainExclusionSize,
+        ),
+        "techTierList": _block(
+            "techTierList", blocks.techTierListFormat, 0x1784F4,
+            blocks.techTierListBlockSize, blocks.techTierListBlockCount,
+            (), blocks.techTierListExclusionSize,
+        ),
         "evoReqs": _block(
             "evoReqs", blocks.evoReqsFormat, 0x157A70B8,
             0x814, blocks.evoReqsBlockCount,
@@ -173,16 +196,41 @@ PAL_DE_LAYOUT = RomLayout(
             0x2AA, blocks.evoToFromBlockCount,
             (), blocks.evoToFromExclusionSize,
         ),
+        "digimonData": DataBlockLayout(
+            name="digimonData",
+            format="<ihh23Bx",
+            offset=0x157ABD68,
+            size=0x1A10,
+            count=blocks.digimonDataBlockCount,
+            exclusion_offsets=(0x157AC018, 0x157AC948, 0x157AD278),
+            exclusion_size=blocks.digimonDataExclusionSize,
+            note="PAL-DE stores Digimon names in a separate encoded text table.",
+        ),
+        "itemData": DataBlockLayout(
+            name="itemData",
+            format="<IHHb?2x",
+            offset=0x157A1EB4,
+            size=0x730,
+            count=blocks.itemDataBlockCount,
+            exclusion_offsets=(0x157A23E8,),
+            exclusion_size=blocks.itemDataExclusionSize,
+            note="PAL-DE stores item names in a separate encoded text table.",
+        ),
+        "trackName": DataBlockLayout(
+            name="trackName",
+            format="raw",
+            offset=0x157A5FD4,
+            size=0xA6A,
+            count=None,
+            exclusion_offsets=(0x157A6438,),
+            exclusion_size=blocks.trackNameExclusionSize,
+            note="German Giromon jukebox names; one name spans the exclusion hole.",
+        ),
     },
     patch_offsets={
         "typeEffectivenessOffset": 0x157A1318,
     },
     unmapped=(
-        "digimonData",
-        "itemData",
-        "techBrain",
-        "techTierList",
-        "trackName",
         "scriptOffsets",
         "optionalPatches",
     ),

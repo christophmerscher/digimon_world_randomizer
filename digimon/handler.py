@@ -52,6 +52,7 @@ from digimon.randomization import (
     TokomonItemsRandomizer,
 )
 from digimon.rom.file import RomFile
+from digimon.rom.layouts import layout_for_region
 from digimon.rom.reader import RomReader
 from digimon.rom.region import UnsupportedRomRegionError, ensure_supported_region, detect_rom_region
 from digimon.rom.writer import RomWriter
@@ -99,7 +100,8 @@ class DigimonWorldHandler:
                 self.logger.fatalError(str(exc))
                 raise  # pragma: no cover - fatalError exits
 
-            self._state = RomReader(self, logger).read(rom)
+            self._layout = layout_for_region(self.region)
+            self._state = RomReader(self, logger, self._layout).read(rom)
 
         # Backward-compat attribute aliases — preserve every public name the
         # randomisers, patches, and tests historically reach for.
@@ -154,7 +156,7 @@ class DigimonWorldHandler:
             # bytes (immutable) and may have been replaced by Giromon.
             self._state.trackNames = self.trackNames
 
-            RomWriter(self.logger).write(rom, self._state, toy_town_workaround)
+            RomWriter(self.logger, self._layout).write(rom, self._state, toy_town_workaround)
 
     # ------------------------------------------------------------------
     # Patch queue

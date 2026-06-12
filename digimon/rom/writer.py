@@ -1,3 +1,5 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 """Write a :class:`RomState` back into a Digimon World ROM image.
 
 The writer is the inverse of :class:`~digimon.rom.reader.RomReader`. Each
@@ -12,8 +14,9 @@ import struct
 from typing import BinaryIO
 
 import digimon.data as data
-from digimon.rom import blocks, script_offsets
 from digimon.rom.file import RomFile
+from digimon.rom.layouts import DataBlockLayout, NTSC_U_LAYOUT, RomLayout
+from digimon.rom.script_layouts import ScriptLayout
 from digimon.rom.state import RomState
 from digimon.rom.struct_codec import (
     pack_array,
@@ -23,16 +26,34 @@ from digimon.rom.struct_codec import (
 import script.util as scrutil
 
 
-# Address of one of the Monzaemon/Toy Town spec-evo writes that has to be
-# skipped when the "unlock areas" patch is applied.
-_TOY_TOWN_SKIP_OFFSET = 0x140479ED
-
-
 class RomWriter:
     """Serialise an in-memory :class:`RomState` back into the ROM image."""
 
-    def __init__(self, logger) -> None:
+    def __init__(self, logger, layout: RomLayout = NTSC_U_LAYOUT) -> None:
         self._logger = logger
+        self._layout = layout
+
+    @property
+    def _scripts(self) -> ScriptLayout:
+        return self._layout.require_scripts()
+
+    def _block(self, name: str) -> DataBlockLayout:
+        return self._layout.require_block(name)
+
+    def _write_block(self, handle: BinaryIO, name: str, payload: bytes) -> None:
+        block = self._block(name)
+        write_block_with_exclusions(
+            handle,
+            payload,
+            block.offset,
+            block.size,
+            block.exclusion_offsets,
+            block.exclusion_size,
+        )
+
+    def _write_records(self, handle: BinaryIO, name: str, records: list[tuple]) -> None:
+        block = self._block(name)
+        self._write_block(handle, name, pack_array(records, block.format))
 
     # ------------------------------------------------------------------
     def write(self, rom: RomFile, state: RomState, toy_town_workaround: bool) -> None:
@@ -59,12 +80,7 @@ class RomWriter:
     # ------------------------------------------------------------------
     def _write_tech_data(self, handle: BinaryIO, state: RomState) -> None:
         records = [tech.unpackedFormat() for tech in state.techData]
-        packed = pack_array(records, blocks.techDataFormat)
-        write_block_with_exclusions(
-            handle, packed,
-            blocks.techDataBlockOffset, blocks.techDataBlockSize,
-            blocks.techDataExclusionOffsets, blocks.techDataExclusionSize,
-        )
+        self._write_records(handle, "techData", records)
 
     def _write_tech_learn_chances(self, handle: BinaryIO, state: RomState) -> None:
         battle_records = [
@@ -72,32 +88,17 @@ class RomWriter:
             for tech in state.techData
             if tech.isLearnable
         ]
-        packed = pack_array(battle_records, blocks.techLearnFormat)
-        write_block_with_exclusions(
-            handle, packed,
-            blocks.techLearnBlockOffset, blocks.techLearnBlockSize,
-            blocks.techLearnExclusionOffsets, blocks.techLearnExclusionSize,
-        )
+        self._write_records(handle, "techLearn", battle_records)
 
         brain_records = [tuple(chances) for chances in state.brainLearn]
-        packed = pack_array(brain_records, blocks.techBrainFormat)
-        write_block_with_exclusions(
-            handle, packed,
-            blocks.techBrainBlockOffset, blocks.techBrainBlockSize,
-            blocks.techBrainExclusionOffsets, blocks.techBrainExclusionSize,
-        )
+        self._write_records(handle, "techBrain", brain_records)
 
     # ------------------------------------------------------------------
     # Digimon data
     # ------------------------------------------------------------------
     def _write_digimon_data(self, handle: BinaryIO, state: RomState) -> None:
         records = [digi.unpackedFormat() for digi in state.digimonData]
-        packed = pack_array(records, blocks.digimonDataFormat)
-        write_block_with_exclusions(
-            handle, packed,
-            blocks.digimonDataBlockOffset, blocks.digimonDataBlockSize,
-            blocks.digimonDataExclusionOffsets, blocks.digimonDataExclusionSize,
-        )
+        self._write_records(handle, "digimonData", records)
 
     # ------------------------------------------------------------------
     # Evolution tables
@@ -109,12 +110,7 @@ class RomWriter:
             for i, digi in enumerate(state.digimonData)
             if i in partners
         ]
-        packed = pack_array(records, blocks.evoToFromFormat)
-        write_block_with_exclusions(
-            handle, packed,
-            blocks.evoToFromBlockOffset, blocks.evoToFromBlockSize,
-            blocks.evoToFromExclusionOffsets, blocks.evoToFromExclusionSize,
-        )
+        self._write_records(handle, "evoToFrom", records)
 
     def _write_evolution_stats(self, handle: BinaryIO, state: RomState) -> None:
         partners = range(0, data.lastPartnerDigimon + 1)
@@ -123,12 +119,7 @@ class RomWriter:
             for i, digi in enumerate(state.digimonData)
             if i in partners
         ]
-        packed = pack_array(records, blocks.evoStatsFormat)
-        write_block_with_exclusions(
-            handle, packed,
-            blocks.evoStatsBlockOffset, blocks.evoStatsBlockSize,
-            blocks.evoStatsExclusionOffsets, blocks.evoStatsExclusionSize,
-        )
+        self._write_records(handle, "evoStats", records)
 
     def _write_evolution_requirements(self, handle: BinaryIO, state: RomState) -> None:
         partners = range(0, data.lastPartnerDigimon - 2)
@@ -137,24 +128,14 @@ class RomWriter:
             for i, digi in enumerate(state.digimonData)
             if i in partners
         ]
-        packed = pack_array(records, blocks.evoReqsFormat)
-        write_block_with_exclusions(
-            handle, packed,
-            blocks.evoReqsBlockOffset, blocks.evoReqsBlockSize,
-            blocks.evoReqsExclusionOffsets, blocks.evoReqsExclusionSize,
-        )
+        self._write_records(handle, "evoReqs", records)
 
     # ------------------------------------------------------------------
     # Items
     # ------------------------------------------------------------------
     def _write_item_data(self, handle: BinaryIO, state: RomState) -> None:
         records = [item.unpackedFormat() for item in state.itemData]
-        packed = pack_array(records, blocks.itemDataFormat)
-        write_block_with_exclusions(
-            handle, packed,
-            blocks.itemDataBlockOffset, blocks.itemDataBlockSize,
-            blocks.itemDataExclusionOffsets, blocks.itemDataExclusionSize,
-        )
+        self._write_records(handle, "itemData", records)
 
     # ------------------------------------------------------------------
     # Starters
@@ -164,23 +145,23 @@ class RomWriter:
 
         for i in (0, 1):
             # Starter digimon ID
-            write_value(handle, script_offsets.starterSetDigimonOffset[i],
+            write_value(handle, self._scripts.starterSetDigimonOffset[i],
                         struct.pack(data.digimonIDFormat, state.starterID[i]))
 
             # The check that matches the starter when learning its first tech
-            write_value(handle, script_offsets.starterChkDigimonOffset[i],
+            write_value(handle, self._scripts.starterChkDigimonOffset[i],
                         struct.pack(data.digimonIDFormat, state.starterID[i]))
 
             # Tech ID
-            write_value(handle, script_offsets.starterLearnTechOffset[i],
+            write_value(handle, self._scripts.starterLearnTechOffset[i],
                         struct.pack(data.techIDFormat, state.starterTech[i]))
 
             # Animation slot for the first tech
-            write_value(handle, script_offsets.starterEquipAnimOffset[i],
+            write_value(handle, self._scripts.starterEquipAnimOffset[i],
                         struct.pack(data.animIDFormat, techSlotAnimID(state.starterTechSlot[i])))
 
         # The starting-stats check matches the first starter only.
-        write_value(handle, script_offsets.starterStatChkDigimonOffset,
+        write_value(handle, self._scripts.starterStatChkDigimonOffset,
                     struct.pack(data.digimonIDFormat, state.starterID[0]))
 
     # ------------------------------------------------------------------
@@ -191,7 +172,7 @@ class RomWriter:
             verified_offsets, digimon_id, name_offsets = state.recruitData[trigger]
 
             for ofst in verified_offsets:
-                write_value(handle, ofst, struct.pack(script_offsets.recruitFormat, trigger))
+                write_value(handle, ofst, struct.pack(self._scripts.recruitFormat, trigger))
 
             current_name = state.digimonData[trigger - 200].name
             name_to_write = state.digimonData[digimon_id].name[:len(current_name)]
@@ -207,10 +188,10 @@ class RomWriter:
         for offsets in state.specEvos:
             target_id = state.specEvos[offsets][0]
             for ofst in offsets:
-                if ofst == _TOY_TOWN_SKIP_OFFSET and toy_town_workaround:
+                if ofst == self._scripts.toyTownSpecEvoSkipOffset and toy_town_workaround:
                     continue
                 write_value(handle, ofst,
-                            struct.pack(script_offsets.specEvoFormat, target_id))
+                            struct.pack(self._scripts.specEvoFormat, target_id))
 
     # ------------------------------------------------------------------
     # Script-driven item placements
@@ -218,31 +199,27 @@ class RomWriter:
     def _write_chest_items(self, handle: BinaryIO, state: RomState) -> None:
         for ofst, item_id in state.chestItems.items():
             write_value(handle, ofst,
-                        struct.pack(script_offsets.chestItemFormat, scrutil.spawnChest, item_id))
+                        struct.pack(self._scripts.chestItemFormat, scrutil.spawnChest, item_id))
 
     def _write_map_items(self, handle: BinaryIO, state: RomState) -> None:
         for ofst, item_id in state.mapItems.items():
             write_value(handle, ofst,
-                        struct.pack(script_offsets.mapItemFormat, scrutil.spawnItem, item_id))
+                        struct.pack(self._scripts.mapItemFormat, scrutil.spawnItem, item_id))
 
     def _write_tokomon_items(self, handle: BinaryIO, state: RomState) -> None:
         for ofst, (item_id, count) in state.tokoItems.items():
             write_value(handle, ofst,
-                        struct.pack(script_offsets.tokoItemFormat, scrutil.giveItem, item_id, count))
+                        struct.pack(self._scripts.tokoItemFormat, scrutil.giveItem, item_id, count))
 
     def _write_tech_gifts(self, handle: BinaryIO, state: RomState) -> None:
         for (learn_ofst, check_ofst), tech_id in state.techGifts.items():
             write_value(handle, learn_ofst,
-                        struct.pack(script_offsets.learnMoveFormat, scrutil.learnMove, tech_id))
+                        struct.pack(self._scripts.learnMoveFormat, scrutil.learnMove, tech_id))
             write_value(handle, check_ofst,
-                        struct.pack(script_offsets.checkMoveFormat, tech_id))
+                        struct.pack(self._scripts.checkMoveFormat, tech_id))
 
     # ------------------------------------------------------------------
     # Jukebox
     # ------------------------------------------------------------------
     def _write_jukebox_track_names(self, handle: BinaryIO, state: RomState) -> None:
-        write_block_with_exclusions(
-            handle, state.trackNames,
-            blocks.trackNameBlockOffset, blocks.trackNameBlockSize,
-            blocks.trackNameExclusionOffsets, blocks.trackNameExclusionSize,
-        )
+        self._write_block(handle, "trackName", state.trackNames)
