@@ -1,9 +1,18 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 *.pyc
 *.bin
+*.cue
+*.iso
+*.img
+*.ecm
+*.mdf
+*.sub
 *.log
 *.spec
 *.ssn
 *.bak
+roms/
 
 # Python caches
 __pycache__/

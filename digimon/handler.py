@@ -1,4 +1,5 @@
 # Author: Tristan Challener <challenert@gmail.com>
+# Author: Christoph Merscher <dev@fmerscher.com>
 # Copyright: please don't steal this that is all
 
 """ROM-state facade.
@@ -52,6 +53,7 @@ from digimon.randomization import (
 )
 from digimon.rom.file import RomFile
 from digimon.rom.reader import RomReader
+from digimon.rom.region import UnsupportedRomRegionError, ensure_supported_region, detect_rom_region
 from digimon.rom.writer import RomWriter
 from log.logger import Logger
 
@@ -90,6 +92,13 @@ class DigimonWorldHandler:
             raise  # pragma: no cover — fatalError exits
 
         with rom_cm as rom:
+            self.region = detect_rom_region(rom.handle)
+            try:
+                ensure_supported_region(self.region)
+            except UnsupportedRomRegionError as exc:
+                self.logger.fatalError(str(exc))
+                raise  # pragma: no cover - fatalError exits
+
             self._state = RomReader(self, logger).read(rom)
 
         # Backward-compat attribute aliases — preserve every public name the
