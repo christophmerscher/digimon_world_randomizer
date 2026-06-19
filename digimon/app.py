@@ -22,8 +22,13 @@ from typing import Any
 
 from digimon.handler import DigimonWorldHandler
 from digimon.randomization import RandomizationContext, RandomizationPipeline
+from digimon.rom.feature_support import (
+    RECRUITMENT_REQUIRED_PATCHES,
+    patch_requests_from_settings,
+    unsupported_features_for_layout as _unsupported_features_for_layout,
+    validate_layout_feature_support as _validate_layout_feature_support,
+)
 from digimon.settings import (
-    SettingsError,
     getRequiredGeneralSetting,
 )
 from log.logger import Logger
@@ -48,6 +53,7 @@ def run(config: dict) -> None:
     sys.stdout.flush()
 
     logger, handler = _create_handler(config, input_file)
+    _validate_layout_feature_support(config, handler)
 
     print("Modifying data...")
     sys.stdout.flush()
@@ -94,6 +100,7 @@ def _run_randomisation(config: dict, handler: DigimonWorldHandler, logger: Logge
         logger=logger,
         lookup=handler,
         queue_patch=handler.applyPatch,
+        layout=handler._layout,
     )
 
     def parse_price(value: Any) -> int:
@@ -112,31 +119,8 @@ def _run_randomisation(config: dict, handler: DigimonWorldHandler, logger: Logge
 def _queue_patches(config: dict, handler: DigimonWorldHandler) -> None:
     """Forward the patches section into the handler's patch queue."""
 
-    if not config["patches"]["Enabled"]:
-        return
-
-    queue = handler.applyPatch
-    p = config["patches"]
-
-    if p["EvoItemStatGain"]:     queue("fixEvoItems", 0)
-    if p["QuestItemsDroppable"]: queue("allowDrop", 0)
-    if p["Woah"]:                queue("woah", 0)
-    if p["BrainTrainTierOne"]:   queue("learnTierOne", 0)
-    if p["JukeboxGlitch"]:       queue("giromon", 0)
-    if p["IncreaseLearnChance"]: queue("upLearnChance", 0)
-    if p["Gabu"]:                queue("gabumon", 0)
-
-    if p["SpawnRateEnabled"] != "0":
-        queue("spawn", int(p["SpawnRate"]))
-
-    if p["ShowHashIntro"]:       queue("hash", config["general"]["Hash"])
-    if p["SkipIntro"]:           queue("intro", 0)
-    if p["UnlockAreas"]:         queue("unlock", 0)
-    if p["UnrigSlots"]:          queue("slots", 0)
-    if p["Softlock"]:            queue("softlock", 0)
-    if p["LearnMoveAndCommand"]: queue("learnmoveandcommand", 0)
-    if p["FixDVChips"]:          queue("fixDVChips", 0)
-    if p["HappyVending"]:        queue("happyVending", 0)
+    for request in patch_requests_from_settings(config):
+        handler.applyPatch(request.name, request.value)
 
 
 def _write_output(handler: DigimonWorldHandler, logger: Logger, output_file: str) -> None:

@@ -19,11 +19,13 @@ from digimon.randomization import (
     RandomTechPicker,
     RandomizationContext,
     RandomizationPipeline,
+    RecruitmentsRandomizer,
     RecruitmentValidator,
     StatRequirementGenerator,
     TechGiftsRandomizer,
 )
 from digimon.rom.state import RomState
+from digimon.rom.layouts import PAL_DE_LAYOUT
 
 
 class _SilentLogger:
@@ -55,6 +57,14 @@ class _TechStub:
         self.isLearnable = isLearnable
 
 
+class _DigimonStub:
+    def __init__(self, id, *, name=None, height=100, pp=0) -> None:
+        self.id = id
+        self.name = name if name is not None else f"Digi{id}"
+        self.height = height
+        self.pp = pp
+
+
 class _Lookup:
     def __init__(self) -> None:
         self.randomizedRequirements = False
@@ -72,7 +82,7 @@ class _Lookup:
     def getPlayableDigimonByLevel(self, level, excludeSpecials=False): return []
 
 
-def _make_ctx(state: RomState | None = None) -> RandomizationContext:
+def _make_ctx(state: RomState | None = None, *, layout=None) -> RandomizationContext:
     queued: list = []
 
     def queue(name, value):
@@ -82,6 +92,7 @@ def _make_ctx(state: RomState | None = None) -> RandomizationContext:
     ctx = RandomizationContext(
         state=state, logger=_SilentLogger(),
         lookup=_Lookup(), queue_patch=queue,
+        layout=layout,
     )
     ctx.queued_patches = queued  # type: ignore[attr-defined]
     return ctx
@@ -268,6 +279,21 @@ class IntegrationTests(unittest.TestCase):
 
         for new_id in state.techGifts.values():
             self.assertIn(new_id, {1, 2})
+
+    def test_pal_recruitment_queues_pp_patch_and_encodes_pp_bits(self):
+        state = RomState()
+        state.recruitData = {204: ((0x10,), 5, ())}
+        state.digimonData = [_DigimonStub(i) for i in range(6)]
+        state.digimonData[4] = _DigimonStub(4, name="Old", height=100, pp=0)
+        state.digimonData[5] = _DigimonStub(5, name="New", height=200, pp=3)
+
+        random.seed(1)
+        ctx = _make_ctx(state, layout=PAL_DE_LAYOUT)
+
+        RecruitmentsRandomizer().apply(ctx)
+
+        self.assertEqual(ctx.queued_patches, [("pp", 0), ("ogremon", 0)])
+        self.assertEqual(state.digimonData[4].height, 103)
 
 
 if __name__ == "__main__":

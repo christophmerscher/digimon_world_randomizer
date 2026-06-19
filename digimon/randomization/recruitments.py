@@ -1,3 +1,5 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 """Randomly shuffle which digimon shows up for each recruitment trigger.
 
 Side-effects beyond the state mutation:
@@ -16,6 +18,7 @@ import random
 
 from digimon.randomization.base import Randomizer, RandomizationContext
 from digimon.randomization.recruitment_validator import RecruitmentValidator
+from digimon.rom.patches.registry import get_patch
 
 
 # Bit mask for the PP value packed into the low 2 bits of ``height``.
@@ -38,25 +41,48 @@ class RecruitmentsRandomizer(Randomizer):
             self.apply(ctx)
             return
 
-        # Queue patches the new recruitment plan depends on.
-        ctx.queue_patch("pp", 0)
-        ctx.queue_patch("ogremon", 0)
+        # Queue patches the new recruitment plan depends on when they are
+        # mapped for the active layout.
+        pp_patch_enabled = self._queue_patch_if_supported(ctx, "pp")
+        self._queue_patch_if_supported(ctx, "ogremon")
 
         # Stash each recruit's new PP value into the low 2 bits of the
         # *old* recruit's height so the new PP patch can read it at runtime.
         digimon = ctx.state.digimonData
-        for trigger in recruit_data:
-            old_digi = digimon[trigger - 200]
-            new_digi = digimon[recruit_data[trigger][1]]
-            old_digi.height = (old_digi.height & PP_CLEAR_MASK) | new_digi.pp
+        if pp_patch_enabled:
+            for trigger in recruit_data:
+                old_digi = digimon[trigger - 200]
+                new_digi = digimon[recruit_data[trigger][1]]
+                old_digi.height = (old_digi.height & PP_CLEAR_MASK) | new_digi.pp
+        else:
+            ctx.logger.logChange(
+                "Skipped PP calculation patch; recruitment shuffling stays enabled, "
+                "but PP awards remain the original runtime values."
+            )
 
         for trigger in recruit_data:
             old_digi = digimon[trigger - 200]
             new_digi = digimon[recruit_data[trigger][1]]
-            ctx.logger.logChange(
-                old_digi.name + " now recruits " + new_digi.name
-                + " and gives " + str(old_digi.height & PP_MASK) + " pp"
-            )
+            if pp_patch_enabled:
+                ctx.logger.logChange(
+                    old_digi.name + " now recruits " + new_digi.name
+                    + " and gives " + str(old_digi.height & PP_MASK) + " pp"
+                )
+            else:
+                ctx.logger.logChange(
+                    old_digi.name + " now recruits " + new_digi.name
+                )
             ctx.logger.logChange(
                 old_digi.name + " now has height: " + str(old_digi.height)
             )
+
+    def _queue_patch_if_supported(self, ctx: RandomizationContext, name: str) -> bool:
+        patch = get_patch(name)
+        if patch is None:
+            return False
+
+        if ctx.layout is not None and not patch.supports_layout(ctx.layout):
+            return False
+
+        ctx.queue_patch(name, 0)
+        return True

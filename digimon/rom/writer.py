@@ -97,7 +97,10 @@ class RomWriter:
     # Digimon data
     # ------------------------------------------------------------------
     def _write_digimon_data(self, handle: BinaryIO, state: RomState) -> None:
-        records = [digi.unpackedFormat() for digi in state.digimonData]
+        records = [
+            self._record_for_block("digimonData", digi.unpackedFormat())
+            for digi in state.digimonData
+        ]
         self._write_records(handle, "digimonData", records)
 
     # ------------------------------------------------------------------
@@ -134,8 +137,18 @@ class RomWriter:
     # Items
     # ------------------------------------------------------------------
     def _write_item_data(self, handle: BinaryIO, state: RomState) -> None:
-        records = [item.unpackedFormat() for item in state.itemData]
+        records = [
+            self._record_for_block("itemData", item.unpackedFormat())
+            for item in state.itemData
+        ]
         self._write_records(handle, "itemData", records)
+
+    def _record_for_block(self, name: str, record: tuple) -> tuple:
+        block = self._block(name)
+        if block.format.startswith("<20s"):
+            return record
+
+        return record[1:]
 
     # ------------------------------------------------------------------
     # Starters

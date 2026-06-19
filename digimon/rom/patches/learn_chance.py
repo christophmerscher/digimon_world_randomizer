@@ -1,3 +1,5 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 """Patch: double the chance of learning techs in battle + brain training.
 
 Zero rates in brain training stay non-zero (the engine treats 0 as
@@ -16,6 +18,7 @@ ZERO_REPLACEMENT_RATE = 5
 
 class IncreaseLearnChancePatch(Patch):
     name = "upLearnChance"
+    supported_layouts = None
 
     def apply(self, ctx: PatchContext) -> None:
         for tech in ctx.state.techData:

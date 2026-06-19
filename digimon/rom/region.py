@@ -2,9 +2,9 @@
 
 """PlayStation disc-region detection for Digimon World ROM images.
 
-The randomizer currently has only the NTSC-U address layout mapped. PAL
-images must be detected before any offset table is used, otherwise the
-reader/writer can seek into unrelated PAL data and produce a broken ROM.
+Region detection happens before any offset table is used. NTSC-U is fully
+mapped; PAL-DE is accepted only for the verified partial layout and is guarded
+at feature-selection time until every writable area is mapped.
 """
 
 from __future__ import annotations
@@ -47,6 +47,10 @@ _PAL_SERIALS = (
     b"SLES03434",
 )
 
+_SUPPORTED_PAL_SERIALS = (
+    "SLES_034.34",
+)
+
 
 def detect_rom_region(handle: BinaryIO) -> RomRegionInfo:
     """Detect a ROM region by scanning the disc header area for serials."""
@@ -84,12 +88,14 @@ def ensure_supported_region(info: RomRegionInfo) -> None:
     if info.region is RomRegion.NTSC_U:
         return
 
+    if info.region is RomRegion.PAL and info.serial in _SUPPORTED_PAL_SERIALS:
+        return
+
     if info.region is RomRegion.PAL:
         suffix = " (" + info.serial + ")" if info.serial else ""
         raise UnsupportedRomRegionError(
             "PAL Digimon World ROM detected" + suffix
-            + ", but PAL offset tables are not mapped yet. "
-            + "Please provide the PAL .bin so the layout can be mapped safely."
+            + ", but this PAL disc layout is not mapped yet."
         )
 
     suffix = " (" + info.serial + ")" if info.serial else ""

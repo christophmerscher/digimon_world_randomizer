@@ -11,11 +11,12 @@ exclusions. A plain "PAL offset = NTSC offset + delta" is not safe.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping
+from typing import Any, Mapping
 
-from digimon.rom import blocks, patch_data
+from digimon.rom import blocks
+from digimon.rom.patch_offsets import NTSC_U_PATCH_OFFSETS, PAL_DE_PATCH_OFFSETS
 from digimon.rom.region import RomRegion, RomRegionInfo
-from digimon.rom.script_layouts import NTSC_U_SCRIPT_LAYOUT, ScriptLayout
+from digimon.rom.script_layouts import NTSC_U_SCRIPT_LAYOUT, PAL_DE_SCRIPT_LAYOUT, ScriptLayout
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,7 @@ class RomLayout:
     complete: bool
     blocks: Mapping[str, DataBlockLayout]
     scripts: ScriptLayout | None = None
-    patch_offsets: Mapping[str, int] = field(default_factory=dict)
+    patch_offsets: Mapping[str, Any] = field(default_factory=dict)
     unmapped: tuple[str, ...] = ()
 
     def require_block(self, name: str) -> DataBlockLayout:
@@ -65,6 +66,16 @@ class RomLayout:
             )
 
         return self.scripts
+
+    def require_patch_offset(self, name: str) -> Any:
+        """Return a mapped patch offset group or explain what is missing."""
+
+        try:
+            return self.patch_offsets[name]
+        except KeyError as exc:
+            raise IncompleteLayoutError(
+                f"{self.display_name} does not have a verified patch mapping for {name!r} yet."
+            ) from exc
 
 
 class IncompleteLayoutError(Exception):
@@ -149,9 +160,7 @@ NTSC_U_LAYOUT = RomLayout(
         ),
     },
     scripts=NTSC_U_SCRIPT_LAYOUT,
-    patch_offsets={
-        "typeEffectivenessOffset": patch_data.typeEffectivenessOffset,
-    },
+    patch_offsets=NTSC_U_PATCH_OFFSETS,
 )
 
 
@@ -227,12 +236,10 @@ PAL_DE_LAYOUT = RomLayout(
             note="German Giromon jukebox names; one name spans the exclusion hole.",
         ),
     },
-    patch_offsets={
-        "typeEffectivenessOffset": 0x157A1318,
-    },
+    patch_offsets=PAL_DE_PATCH_OFFSETS,
+    scripts=PAL_DE_SCRIPT_LAYOUT,
     unmapped=(
-        "scriptOffsets",
-        "optionalPatches",
+        "optionalPatchOffsets",
     ),
 )
 

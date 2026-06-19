@@ -177,6 +177,7 @@ class DigimonWorldHandler:
             logger=self.logger,
             lookup=self,
             queue_patch=self.applyPatch,
+            layout=self._layout,
         )
 
     def randomizeDigimonData(self, dropItem: bool = False, dropRate: bool = False,
@@ -243,7 +244,7 @@ class DigimonWorldHandler:
 
     def getPlayableDigimonByLevel(self, level: int, excludeSpecials: bool = False) -> list[Digimon]:
         result: list[Digimon] = []
-        for digi in self.digimonData:
+        for digi in self._state.digimonData:
             if digi.level == level and digi.id in digi.playableDigimon:
                 if excludeSpecials and digi.name in self._SPECIAL_ULTIMATE_NAMES:
                     continue
@@ -251,16 +252,16 @@ class DigimonWorldHandler:
         return result
 
     def getDigimonName(self, id: int) -> str:
-        if id < len(self.digimonData):
-            return self.digimonData[id].name
+        if id < len(self._state.digimonData):
+            return self._state.digimonData[id].name
         return "---"
 
     def getDigimonByName(self, name: str) -> Digimon | None:
-        return next((digi for digi in self.digimonData if digi.name == name), None)
+        return next((digi for digi in self._state.digimonData if digi.name == name), None)
 
     def getItemName(self, id: int) -> str:
-        if id < len(self.itemData):
-            return self.itemData[id].name
+        if id < len(self._state.itemData):
+            return self._state.itemData[id].name
         return "None"
 
     def getTechName(self, id: int) -> str:

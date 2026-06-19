@@ -1,3 +1,5 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 """Strategy base class for every randomiser.
 
 A randomiser mutates an in-memory :class:`~digimon.rom.state.RomState`
@@ -44,6 +46,10 @@ class RandomizationContext:
     """Callback used by randomisers that need to also queue a follow-up
     ROM patch (e.g. the recruitment randomiser queues ``pp`` and
     ``ogremon``). Bound to :meth:`DigimonWorldHandler.applyPatch`."""
+
+    layout: Any = None
+    """Detected ROM layout; randomisers use this only to avoid queueing
+    layout-specific patches that are not mapped for the current disc."""
 
 
 class Randomizer(ABC):

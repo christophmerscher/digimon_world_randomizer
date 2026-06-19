@@ -14,6 +14,7 @@ import struct
 from typing import BinaryIO
 
 import digimon.data as data
+from data.digimon import find_by_id
 from digimon.models import Digimon, Item, ModelContext, Tech
 from digimon.rom.file import RomFile
 from digimon.rom.layouts import DataBlockLayout, NTSC_U_LAYOUT, RomLayout
@@ -24,6 +25,13 @@ from digimon.rom.struct_codec import (
     unpack_array,
 )
 import script.util as scrutil
+
+
+NAME_FIELD_SIZE = 20
+
+
+def _name_bytes(name: str) -> bytes:
+    return name.encode("ascii")[:NAME_FIELD_SIZE].ljust(NAME_FIELD_SIZE, b"\0")
 
 
 class RomReader:
@@ -66,6 +74,7 @@ class RomReader:
     # ------------------------------------------------------------------
     def read(self, rom: RomFile) -> RomState:
         state = RomState()
+        setattr(self._lookup, "_state", state)
         handle = rom.handle
 
         self._read_techs(handle, state)
@@ -78,7 +87,7 @@ class RomReader:
         self._read_evolution_stats(handle, state)
         self._read_evolution_requirements(handle, state)
         self._read_starters(handle, state)
-        self._read_recruitments(handle, state)
+        self._read_recruitments(rom, state)
         self._read_special_evolutions(handle, state)
         self._read_chest_items(handle, state)
         self._read_map_items(handle, state)
@@ -138,7 +147,7 @@ class RomReader:
         records = self._unpack_block(handle, "itemData")
 
         for i, record in enumerate(records):
-            item = Item(self._lookup, i, record)
+            item = Item(self._lookup, i, self._with_item_name(i, record))
             state.itemData.append(item)
             self._logger.log(str(item))
 
@@ -156,9 +165,23 @@ class RomReader:
         records = self._unpack_block(handle, "digimonData")
 
         for i, record in enumerate(records):
-            digi = Digimon(self._lookup, i, record)
+            digi = Digimon(self._lookup, i, self._with_digimon_name(i, record))
             state.digimonData.append(digi)
             self._logger.log(str(digi) + "\n")
+
+    def _with_item_name(self, item_id: int, record: tuple) -> tuple:
+        if isinstance(record[0], (bytes, bytearray)):
+            return record
+
+        return (_name_bytes("Item " + format(item_id, "02X")), *record)
+
+    def _with_digimon_name(self, digimon_id: int, record: tuple) -> tuple:
+        if isinstance(record[0], (bytes, bytearray)):
+            return record
+
+        known = find_by_id(digimon_id)
+        name = known.display_name if known is not None else "Digimon " + format(digimon_id, "02X")
+        return (_name_bytes(name), *record)
 
     # ------------------------------------------------------------------
     # Evolution tables
@@ -219,11 +242,17 @@ class RomReader:
     # ------------------------------------------------------------------
     # Recruitments
     # ------------------------------------------------------------------
-    def _read_recruitments(self, handle: BinaryIO, state: RomState) -> None:
+    def _read_recruitments(self, rom: RomFile, state: RomState) -> None:
         self._logger.log(self._logger.getHeader("Read Recruitment Data"))
 
+        handle = rom.handle
         err = False
-        for (trigger_offsets, name_offsets, trigger_byte, digimon_id) in self._scripts.recruitOffsets:
+        for (
+            trigger_offsets,
+            name_offsets,
+            trigger_byte,
+            digimon_id,
+        ) in self._recruitment_offsets(rom):
             verified_offsets = []
             for ofst in trigger_offsets:
                 handle.seek(ofst, 0)
@@ -257,6 +286,20 @@ class RomReader:
 
         if not err:
             self._logger.log("All recruitment check values verified.")
+
+    def _recruitment_offsets(
+        self,
+        rom: RomFile,
+    ) -> tuple[tuple[tuple[int, ...], tuple[int, ...], int, int], ...]:
+        if not self._scripts.dynamicRecruitOffsets:
+            return self._scripts.recruitOffsets
+
+        if self._layout.key == "pal-de":
+            from digimon.rom.recruitment_offsets import pal_de_recruit_offsets_from_rom
+
+            return pal_de_recruit_offsets_from_rom(rom.path)
+
+        return self._scripts.recruitOffsets
 
     # ------------------------------------------------------------------
     # Special evolutions

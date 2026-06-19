@@ -33,13 +33,14 @@ class RomRegionTests(unittest.TestCase):
         with self.assertRaises(UnsupportedRomRegionError):
             ensure_supported_region(info)
 
-    def test_detects_german_pal_serial(self):
+    def test_detects_german_pal_serial_and_accepts_mapped_layout(self):
         rom = io.BytesIO(b"\0" * 32 + b"cdrom:\\SLES_034.34;1" + b"\0" * 32)
 
         info = detect_rom_region(rom)
 
         self.assertEqual(info.region, RomRegion.PAL)
         self.assertEqual(info.serial, "SLES_034.34")
+        ensure_supported_region(info)
 
     def test_unknown_region_is_rejected(self):
         info = detect_rom_region(io.BytesIO(b"not a known digimon world image"))

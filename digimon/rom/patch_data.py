@@ -241,3 +241,5 @@ happyMushroomVendingPriceFormat   = "<H"
 happyMushroomVendingPriceValue    = 2000
 
 happyMushroomVendingOffset5 = (0x13FE3326, 0x13FE3338, 0x13FE3382)
+happyMushroomVendingFormat5 = "B"
+happyMushroomVendingValue5  = 69

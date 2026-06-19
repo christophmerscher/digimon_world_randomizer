@@ -1,3 +1,5 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 """Patch: change the random spawn rate of Mamemon/Piximon/MMamemon/Otamamon.
 
 Mamemon-family spawns use a 0..99 RNG, Otamamon uses a 0..2 RNG. The
@@ -12,12 +14,8 @@ import struct
 
 from digimon.rom.patch_data import (
     spawnRateFormat,
-    spawnRateMMamemonOffset,
-    spawnRateMamemonOffset,
-    spawnRateOtamamonOffset,
-    spawnRatePiximonOffset,
 )
-from digimon.rom.patches.base import Patch, PatchContext
+from digimon.rom.patches.base import Patch, PatchContext, require_patch_offset
 from digimon.rom.struct_codec import write_value
 
 
@@ -32,6 +30,13 @@ OTAMAMON_BUCKET_SIZE = 33
 class SpawnRatePatch(Patch):
     name = "spawn"
     takes_value = True
+    supported_layouts = None
+    required_patch_offsets = (
+        "spawnRateMamemonOffset",
+        "spawnRatePiximonOffset",
+        "spawnRateMMamemonOffset",
+        "spawnRateOtamamonOffset",
+    )
 
     def apply(self, ctx: PatchContext) -> None:
         # ctx.value comes from the settings as ``patches['SpawnRate']`` (1–100).
@@ -40,13 +45,13 @@ class SpawnRatePatch(Patch):
         large_percent = requested - 1
         small_percent = math.floor(requested / OTAMAMON_BUCKET_SIZE)
 
-        for offset in spawnRateMamemonOffset:
+        for offset in require_patch_offset(ctx, "spawnRateMamemonOffset"):
             write_value(ctx.handle, offset, struct.pack(spawnRateFormat, large_percent))
-        for offset in spawnRatePiximonOffset:
+        for offset in require_patch_offset(ctx, "spawnRatePiximonOffset"):
             write_value(ctx.handle, offset, struct.pack(spawnRateFormat, large_percent))
-        for offset in spawnRateMMamemonOffset:
+        for offset in require_patch_offset(ctx, "spawnRateMMamemonOffset"):
             write_value(ctx.handle, offset, struct.pack(spawnRateFormat, large_percent))
-        for offset in spawnRateOtamamonOffset:
+        for offset in require_patch_offset(ctx, "spawnRateOtamamonOffset"):
             write_value(ctx.handle, offset, struct.pack(spawnRateFormat, small_percent))
 
         ctx.logger.logChange(

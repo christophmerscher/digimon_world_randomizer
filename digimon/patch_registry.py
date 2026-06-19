@@ -1,4 +1,5 @@
 # Author: Tristan Challener <challenert@gmail.com>
+# Author: Christoph Merscher <dev@fmerscher.com>
 # Copyright: please don't steal this that is all
 
 """Backward-compatibility shim.
@@ -37,7 +38,9 @@ def applyPatches(handler: Any, file: Any) -> bool:
     """
 
     if isinstance(getattr(handler, "_state", None), RomState):
-        return PatchPipeline(handler.logger).apply(file, handler._state, handler.patches)
+        return PatchPipeline(handler.logger, handler._layout).apply(
+            file, handler._state, handler.patches
+        )
 
     # Legacy / test fallback — keep calling the handler's bound methods so
     # existing duck-typed test doubles continue to work.

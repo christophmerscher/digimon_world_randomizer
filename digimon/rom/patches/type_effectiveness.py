@@ -1,3 +1,5 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 """Patch: randomise the 7x7 type effectiveness chart."""
 
 from __future__ import annotations
@@ -5,8 +7,8 @@ from __future__ import annotations
 import random
 import struct
 
-from digimon.rom.patch_data import typeEffectivenessFormat, typeEffectivenessOffset
-from digimon.rom.patches.base import Patch, PatchContext
+from digimon.rom.patch_data import typeEffectivenessFormat
+from digimon.rom.patches.base import Patch, PatchContext, require_patch_offset
 from digimon.rom.struct_codec import write_value
 
 
@@ -21,9 +23,12 @@ class TypeEffectivenessPatch(Patch):
     against the ROM file, which is why it lives with the patches."""
 
     name = "typeEffectiveness"
+    supported_layouts = None
+    required_patch_offsets = ("typeEffectivenessOffset",)
 
     def apply(self, ctx: PatchContext) -> None:
         ctx.logger.logChange("Changing type effectivness chart")
+        base_offset = require_patch_offset(ctx, "typeEffectivenessOffset")
 
         for type1 in range(TYPE_COUNT):
             row = ""
@@ -32,7 +37,7 @@ class TypeEffectivenessPatch(Patch):
                 offset = type1 * TYPE_COUNT + type2
                 write_value(
                     ctx.handle,
-                    typeEffectivenessOffset + offset,
+                    base_offset + offset,
                     struct.pack(typeEffectivenessFormat, new_value),
                 )
                 row += str(new_value) + " "

@@ -1,3 +1,5 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 """Patch: prevent the jukebox crash caused by overlong track names.
 
 The Giromon jukebox glitch happens when the engine reads a track name
@@ -16,6 +18,7 @@ MAX_TRACK_NAME_LENGTH = 24
 
 class GiromonPatch(Patch):
     name = "giromon"
+    supported_layouts = None
 
     def apply(self, ctx: PatchContext) -> None:
         track_names = ctx.state.trackNames

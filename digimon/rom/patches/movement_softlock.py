@@ -1,3 +1,5 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 """Patch: fix four movement-related softlocks.
 
 Each fix overwrites a single instruction (or branch target) at every
@@ -11,30 +13,45 @@ import struct
 
 from digimon.rom.patch_data import (
     fixLeoCaveSLFormat,
-    fixLeoCaveSLOffset,
     fixLeoCaveSLValue,
     fixMoveToSLFormat,
-    fixMoveToSLOffset,
     fixMoveToSLValue,
     fixRotationSLFormat,
-    fixRotationSLOffset,
     fixRotationSLValue,
     fixToyTownSLFormat,
-    fixToyTownSLOffset,
     fixToyTownSLValue,
 )
-from digimon.rom.patches.base import Patch, PatchContext
+from digimon.rom.patches.base import Patch, PatchContext, require_patch_offset
 from digimon.rom.struct_codec import write_value
 
 
 class MovementSoftlockPatch(Patch):
     name = "softlock"
+    supported_layouts = None
+    required_patch_offsets = (
+        "fixRotationSLOffset",
+        "fixMoveToSLOffset",
+        "fixToyTownSLOffset",
+        "fixLeoCaveSLOffset",
+    )
 
     def apply(self, ctx: PatchContext) -> None:
-        self._apply_group(ctx, fixRotationSLOffset,  fixRotationSLFormat,  fixRotationSLValue)
-        self._apply_group(ctx, fixMoveToSLOffset,    fixMoveToSLFormat,    fixMoveToSLValue)
-        self._apply_group(ctx, fixToyTownSLOffset,   fixToyTownSLFormat,   fixToyTownSLValue)
-        self._apply_group(ctx, fixLeoCaveSLOffset,   fixLeoCaveSLFormat,   fixLeoCaveSLValue)
+        self._apply_group(
+            ctx, require_patch_offset(ctx, "fixRotationSLOffset"),
+            fixRotationSLFormat, fixRotationSLValue,
+        )
+        self._apply_group(
+            ctx, require_patch_offset(ctx, "fixMoveToSLOffset"),
+            fixMoveToSLFormat, fixMoveToSLValue,
+        )
+        self._apply_group(
+            ctx, require_patch_offset(ctx, "fixToyTownSLOffset"),
+            fixToyTownSLFormat, fixToyTownSLValue,
+        )
+        self._apply_group(
+            ctx, require_patch_offset(ctx, "fixLeoCaveSLOffset"),
+            fixLeoCaveSLFormat, fixLeoCaveSLValue,
+        )
 
         ctx.logger.logChange("Applied 4 movement softlock patches.")
 

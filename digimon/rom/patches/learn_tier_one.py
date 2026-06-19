@@ -1,3 +1,5 @@
+# Author: Christoph Merscher <dev@fmerscher.com>
+
 """Patch: let brain training teach tier-1 techs with a 30% success rate."""
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ TIER_ONE_LEARN_RATE = 30
 
 class LearnTierOnePatch(Patch):
     name = "learnTierOne"
+    supported_layouts = None
 
     def apply(self, ctx: PatchContext) -> None:
         ctx.state.brainLearn[0][0] = TIER_ONE_LEARN_RATE

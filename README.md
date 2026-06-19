@@ -282,7 +282,7 @@ applied; the rest are opt-in below.
 | `Softlock` | `softlock` | Fixes four movement-related softlocks (rotation, entityMoveTo, Toy Town, Leomon's cave Nanimon). |
 | `LearnMoveAndCommand` | `learnmoveandcommand` | Lets you learn a command **and** a tech in the same brain-training session. |
 | `FixDVChips` | `fixDVChips` | Rewrites the DV-chip description text to actually describe what each chip does. |
-| `HappyVending` | `happyVending` | Swaps the Dragon Eye Lake vending-machine output for a HappyMushroom trade. ⚠️ Known broken in legacy code; will raise `NameError` if enabled. |
+| `HappyVending` | `happyVending` | Swaps the Dragon Eye Lake vending-machine output for a HappyMushroom trade. |
 | *always on* | `_evoTargetUnify` | Unifies two near-duplicate evo-target functions to free memory for the reset-button hook. |
 | *always on* | `_resetButton` | Adds a button combination that reboots the game. |
 
@@ -492,4 +492,3 @@ Produces a PyInstaller-bundled GUI + CLI executable under `dist/`.
 ## Changelog
 
 The full release history lives in [CHANGELOG.md](CHANGELOG.md).
-
