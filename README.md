@@ -19,6 +19,7 @@ evolutions, and apply a long list of quality-of-life patches.
 ## Table of contents
 
 - [Quickstart](#quickstart)
+  - [Major new feature: German PAL support](#major-new-feature-german-pal-support)
   - [Using the GUI (PyQt6)](#using-the-gui-pyqt6)
   - [Using the CLI (cross-platform)](#using-the-cli-cross-platform)
 - [What you can randomise](#what-you-can-randomise)
@@ -43,8 +44,28 @@ evolutions, and apply a long list of quality-of-life patches.
 
 ## Quickstart
 
-You need a clean **Digimon World 1 (PSX, USA)** ROM image in `.bin` format.
-The randomizer **does not** distribute the ROM, you must supply your own.
+You need a clean **Digimon World 1 (PSX)** ROM image in `.bin` format.
+The randomizer supports the original **USA NTSC-U** disc and the
+**German PAL** disc (`SLES_034.34`). The randomizer **does not**
+distribute the ROM, you must supply your own.
+
+### Major new feature: German PAL support
+
+The randomizer can now detect and randomize the German PAL version of
+Digimon World. Pick your German PAL `.bin` in the GUI or pass it as
+`general.InputFile` in the CLI settings; the program scans the ROM
+serial, selects the PAL-DE layout automatically, and writes PAL-specific
+offsets for data tables, scripts, and ROM patches.
+
+Supported PAL build:
+
+| Region | Disc serial | Status |
+|---|---|---|
+| USA NTSC-U | `SLUS_010.32` | Supported |
+| Germany PAL | `SLES_034.34` | Supported |
+
+Other PAL serials may be detected as PAL, but they are rejected unless
+their layouts are mapped and verified.
 
 ### Using the GUI (PyQt6)
 

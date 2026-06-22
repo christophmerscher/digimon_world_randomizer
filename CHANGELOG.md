@@ -5,6 +5,13 @@ maintained inline in `README.md`; it lives here from the 2026 refactor
 onwards.
 
 ## Refactor (2026)
+### New Features
+    - German PAL support: the randomizer now detects `SLES_034.34`
+      ROMs, selects the PAL-DE layout automatically, and can randomize
+      starters, data tables, recruitment, chest contents, map items,
+      evolution data, tech gifts, and the mapped quality-of-life patches
+      for the German PAL release.
+
 ### Internals
     - Project restructured to SOLID + DRY, Python 3.11+ target.
     - Handler god class split into Reader / Writer / Pipeline / per-patch
